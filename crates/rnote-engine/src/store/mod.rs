@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{HopSlotMap, SecondaryMap};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use tracing::debug;
 
 slotmap::new_key_type! {
@@ -323,7 +323,12 @@ impl StrokeStore {
         let layer = layer.unwrap_or_else(|| stroke.extract_default_layer());
 
         let key = Arc::make_mut(&mut self.stroke_components).insert(Arc::new(stroke));
+
+        // for now very basic timing to (at the very least) identify whether this is our hotspot on the start
+        let now = SystemTime::now();
         self.key_tree.insert_with_key(key, bounds);
+        let elapsed = now.elapsed();
+        println!("insertion of the stroke took {:?} seconds", elapsed);
         self.chrono_counter += 1;
 
         Arc::make_mut(&mut self.trash_components).insert(key, Arc::new(TrashComponent::default()));

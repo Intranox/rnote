@@ -202,6 +202,13 @@ impl PenBehaviour for Brush {
                             {
                                 brushstroke.extend_w_segments(segments);
                                 widget_flags.store_modified = true;
+                            } else {
+                                // maybe the get_stroke_mut fails ?
+                                // kinda weird as the only reason to fail here is that the stroke key is not found
+                                println!(
+                                    "unexpected failure to push the last {:?} elements to the current stroke",
+                                    n_segments
+                                );
                             }
 
                             engine_view.store.append_rendering_last_segments(
