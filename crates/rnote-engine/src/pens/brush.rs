@@ -31,12 +31,18 @@ enum BrushState {
 #[derive(Debug)]
 pub struct Brush {
     state: BrushState,
+    /// counts the number of elements send back by the builder
+    n_elements_out: usize,
+    /// counts the number of pen events sent to the builder
+    n_elements_in: usize,
 }
 
 impl Default for Brush {
     fn default() -> Self {
         Self {
             state: BrushState::Idle,
+            n_elements_out: 0,
+            n_elements_in: 0,
         }
     }
 }
@@ -119,6 +125,14 @@ impl PenBehaviour for Brush {
                         ),
                         current_stroke_key,
                     };
+                    // count the start element
+                    self.n_elements_out = 1;
+                    self.n_elements_in = 1;
+
+                    println!(
+                        "BRUSH_STATS: start of brush stroke with builder {:?}",
+                        engine_view.config.pens_config.brush_config.builder_type
+                    );
 
                     EventResult {
                         handled: true,
@@ -158,7 +172,12 @@ impl PenBehaviour for Brush {
                     .document
                     .resize_autoexpand(engine_view.store, engine_view.camera);
 
+                // DEBUG PRINT
+                self.debug_print_end_stroke(engine_view);
+
                 self.state = BrushState::Idle;
+                self.n_elements_out = 0;
+                self.n_elements_in = 0;
 
                 widget_flags |= engine_view.store.record(Instant::now());
                 widget_flags.store_modified = true;
@@ -178,6 +197,8 @@ impl PenBehaviour for Brush {
             ) => {
                 let builder_result =
                     path_builder.handle_event(pen_event, now, Constraints::default());
+                self.n_elements_in += 1;
+
                 let handled = builder_result.handled;
                 let propagate = builder_result.propagate;
 
@@ -218,6 +239,21 @@ impl PenBehaviour for Brush {
                                 engine_view.camera.viewport(),
                                 engine_view.camera.image_scale(),
                             );
+                            // update state to count the n segments
+                            self.n_elements_out += n_segments;
+
+                            // verify equality
+                            if let Some(Stroke::BrushStroke(brushstroke)) =
+                                engine_view.store.get_stroke_mut(*current_stroke_key)
+                            {
+                                let path_len = brushstroke.path.segments.len() + 1;
+                                if path_len != self.n_elements_out {
+                                    println!(
+                                        "BRUSH_STATS: expected {:?} elements to be in the current engine brushstroke got {:?}",
+                                        self.n_elements_out, path_len
+                                    );
+                                }
+                            }
                         }
 
                         PenProgress::InProgress
@@ -240,6 +276,20 @@ impl PenBehaviour for Brush {
                                 engine_view.camera.viewport(),
                                 engine_view.camera.image_scale(),
                             );
+                            self.n_elements_out += n_segments;
+
+                            // verify equality
+                            if let Some(Stroke::BrushStroke(brushstroke)) =
+                                engine_view.store.get_stroke_mut(*current_stroke_key)
+                            {
+                                let path_len = brushstroke.path.segments.len() + 1;
+                                if path_len != self.n_elements_out {
+                                    println!(
+                                        "BRUSH_STATS: expected {:?} elements to be in the current engine brushstroke got {:?}",
+                                        self.n_elements_out, path_len
+                                    );
+                                }
+                            }
                         }
 
                         // Finish up the last stroke
@@ -256,7 +306,13 @@ impl PenBehaviour for Brush {
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
 
+                        // DEBUG PRINT
+                        self.debug_print_end_stroke(engine_view);
+
                         self.state = BrushState::Idle;
+
+                        self.n_elements_in = 0;
+                        self.n_elements_out = 0;
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
@@ -326,6 +382,31 @@ impl DrawableOnDoc for Brush {
 
 impl Brush {
     const INPUT_OVERSHOOT: f64 = 30.0;
+
+    /// debug print to count in/out events
+    fn debug_print_end_stroke(&self, engine_view: &mut EngineViewMut) {
+        let key = match &self.state {
+            BrushState::Drawing {
+                path_builder: _,
+                current_stroke_key,
+            } => Some(current_stroke_key),
+            BrushState::Idle => None,
+        };
+        println!(
+            "BRUSH_STATS: End of stroke with key {:?}, sent {:?} to the builder, got {:?} back.",
+            key, self.n_elements_in, self.n_elements_out
+        );
+
+        if let Some(Stroke::BrushStroke(brushstroke)) =
+            engine_view.store.get_stroke_mut(*key.unwrap())
+        {
+            println!(
+                "BRUSH_STATS: In the store, the key {:?} has {:?} elements",
+                key,
+                brushstroke.path.segments.len() + 1 // +1 for the start element
+            );
+        }
+    }
 }
 
 fn play_marker_sound(engine_view: &mut EngineViewMut) {

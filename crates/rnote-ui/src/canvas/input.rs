@@ -9,6 +9,7 @@ use rnote_engine::ext::GraphenePointExt;
 use rnote_engine::pens::PenMode;
 use rnote_engine::pens::penholder::BacklogPolicy;
 use std::collections::HashSet;
+use std::ops::Add;
 use std::time::{Duration, Instant};
 use tracing::trace;
 
@@ -164,6 +165,7 @@ pub(crate) fn handle_pointer_controller_event(
         let pen_mode = retrieve_pen_mode(event);
 
         for (element, event_time) in elements {
+            // this is something I'm interested in: activate the trace
             trace!(?element, ?pen_state, ?modifier_keys, ?pen_mode, event_time_delta=?now.duration_since(event_time), msg="handle pen event element");
 
             // Workaround for https://github.com/flxzt/rnote/issues/785
@@ -355,6 +357,8 @@ fn retrieve_pointer_elements(
             .unwrap()
     };
 
+    // Idea: check whether or not we lose events because of lag making the last event type ?
+    // Kinda unlikely but worth checking for
     if event.event_type() == gdk::EventType::MotionNotify
         && backlog_policy != BacklogPolicy::Disable
     {
@@ -366,11 +370,13 @@ fn retrieve_pointer_elements(
             if !(available_axes.contains(gdk::AxisFlags::X)
                 && available_axes.contains(gdk::AxisFlags::Y))
             {
+                println!("HISTORY: X/Y informmation missing, ignoring");
                 continue;
             }
 
             let entry_delta = Duration::from_millis(event_time.saturating_sub(entry.time()) as u64);
             let Some(entry_time) = now.checked_sub(entry_delta) else {
+                println!("HISTORY: incoherent timing for event, ignoring");
                 continue;
             };
 
@@ -399,6 +405,40 @@ fn retrieve_pointer_elements(
         }
 
         elements.extend(entries.into_iter().rev());
+
+        println!(
+            "HISTORY: size of the history before filtering {:?} and after {:?}",
+            event.history().len().add(1), // +1 because of the end element
+            elements.len() + 1            // not yet pushed the origin event
+        );
+    } else {
+        println!(
+            "HISTORY: event type {:?}. History is not read in that instance. History size {:?}",
+            event.event_type(),
+            event.history().len(),
+        );
+
+        // iterate over events
+        for entry in event.history().into_iter().rev() {
+            let available_axes = entry.flags();
+            if !(available_axes.contains(gdk::AxisFlags::X)
+                && available_axes.contains(gdk::AxisFlags::Y))
+            {
+                println!("HISTORY: X/Y informmation missing, ignoring");
+                continue;
+            }
+
+            let axes = entry.axes();
+            let event_time = entry.time();
+            let pos = transform_pos(na::vector![
+                axes[crate::utils::axis_use_idx(gdk::AxisUse::X)],
+                axes[crate::utils::axis_use_idx(gdk::AxisUse::Y)]
+            ]);
+            println!(
+                "HISTORY: ignored event in the history at time {:?}, position {:?} ",
+                event_time, pos
+            );
+        }
     }
 
     let pos = event

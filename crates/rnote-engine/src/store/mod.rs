@@ -319,18 +319,20 @@ impl StrokeStore {
         stroke: Stroke,
         layer: Option<StrokeLayer>,
     ) -> StrokeKey {
+        let now = SystemTime::now();
         let bounds = stroke.bounds();
+
+        let stroke_bounds_time = now.elapsed();
+
         let layer = layer.unwrap_or_else(|| stroke.extract_default_layer());
 
         let key = Arc::make_mut(&mut self.stroke_components).insert(Arc::new(stroke));
 
-        // for now very basic timing to (at the very least) identify whether this is our hotspot on the start
-        let now = SystemTime::now();
         self.key_tree.insert_with_key(key, bounds);
-        let elapsed = now.elapsed();
-        println!("insertion of the stroke took {:?} seconds", elapsed);
+
         self.chrono_counter += 1;
 
+        let insertion_starts = SystemTime::now();
         Arc::make_mut(&mut self.trash_components).insert(key, Arc::new(TrashComponent::default()));
         Arc::make_mut(&mut self.selection_components)
             .insert(key, Arc::new(SelectionComponent::default()));
@@ -340,6 +342,13 @@ impl StrokeStore {
         );
         self.render_components
             .insert(key, RenderComponent::default());
+        let time_insetion = insertion_starts.elapsed();
+
+        let elapsed = now.elapsed();
+        println!(
+            "insertion of the stroke took {:?} seconds with {:?} seconds for stroke bounds, {:?} for insertions",
+            elapsed, stroke_bounds_time, time_insetion
+        );
 
         key
     }
