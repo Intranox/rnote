@@ -17,7 +17,6 @@ use rnote_compose::builders::{
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{PenEvent, PenProgress};
 use rnote_compose::penpath::{Element, Segment};
-use std::time::Instant;
 use std::time::{Instant, SystemTime};
 
 #[derive(Debug)]
