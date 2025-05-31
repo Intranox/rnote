@@ -143,10 +143,10 @@ pub(crate) fn draw_statistics_to_gtk_snapshot(
         let text_bounds = Aabb::new(
             na::point![
                 surface_bounds.maxs[0] - 320.0,
-                surface_bounds.mins[1] + 20.0
+                surface_bounds.mins[1] + 10.0
             ],
             na::point![
-                surface_bounds.maxs[0] - 20.0,
+                surface_bounds.maxs[0] - 10.0,
                 surface_bounds.mins[1] + 120.0
             ],
         );
@@ -157,7 +157,12 @@ pub(crate) fn draw_statistics_to_gtk_snapshot(
         let strokes_total = engine.store.keys_unordered();
         let strokes_in_viewport = engine
             .store
-            .keys_unordered_intersecting_bounds(engine.camera.viewport());
+            .keys_unordered_intersecting_bounds(engine.camera.viewport()); // same as the call we do for rendering ?
+
+        let stroke_in_viewport_for_rendering = engine
+            .store
+            .stroke_keys_as_rendered_intersecting_bounds(engine.camera.viewport());
+
         let selected_strokes = engine.store.selection_keys_unordered();
         let trashed_strokes = engine.store.trashed_keys_unordered();
         let strokes_hold_image = strokes_total
@@ -165,13 +170,20 @@ pub(crate) fn draw_statistics_to_gtk_snapshot(
             .filter(|&&key| engine.store.holds_images(key))
             .count();
 
+        let strokes_hold_rendernode = strokes_total
+            .iter()
+            .filter(|&&key| engine.store.hold_rendernode(key))
+            .count();
+
         let statistics_text_string = format!(
-            "strokes in store:   {}\nstrokes in current viewport:   {}\nstrokes selected: {}\nstroke trashed: {}\nstrokes holding images: {}",
+            "strokes in store:   {}\nstrokes in current viewport:   {}\nstrokes selected: {}\nstroke trashed: {}\nstrokes holding images: {}\n strokes in the viewport for the rendering {} strokes holding rendernodes {}",
             strokes_total.len(),
             strokes_in_viewport.len(),
             selected_strokes.len(),
             trashed_strokes.len(),
             strokes_hold_image,
+            stroke_in_viewport_for_rendering.len(), //verify we don't have much more things here
+            strokes_hold_rendernode,
         );
         let text_layout = piet_cx
             .text()

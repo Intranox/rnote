@@ -324,6 +324,9 @@ pub(crate) fn reject_pointer_input(event: &gdk::Event, touch_drawing: bool) -> b
 fn event_is_stylus(event: &gdk::Event) -> bool {
     // As in gtk4 'gtkgesturestylus.c:106' we detect if the pointer is a stylus when it has a device tool
     event.device_tool().is_some()
+    // could be that we don't have a device tool for the pen ?
+    // if so there won't be pressure
+    // but not doing so will sigsev
 }
 
 fn retrieve_pointer_elements(
@@ -385,6 +388,10 @@ fn retrieve_pointer_elements(
                 //
                 // If the backlog input rate is higher than the limit, filter it out
                 if entry_delta.saturating_sub(prev_delta) < delta_limit {
+                    println!(
+                        "event removed before of backlog policy {:?}",
+                        backlog_policy
+                    );
                     continue;
                 }
             }
@@ -395,7 +402,10 @@ fn retrieve_pointer_elements(
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::X)],
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Y)]
             ]);
-            let pressure = if is_stylus {
+            let pressure = if true {
+                //is_stylus {
+                // so it seems to work well now with no issue
+                // but a mouse will return 0 ..
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Pressure)]
             } else {
                 Element::PRESSURE_DEFAULT
@@ -445,7 +455,8 @@ fn retrieve_pointer_elements(
         .position()
         .map(|(x, y)| transform_pos(na::vector![x, y]))?;
 
-    let pressure = if is_stylus {
+    let pressure = if true {
+        //if is_stylus {
         event.axis(gdk::AxisUse::Pressure).unwrap()
     } else {
         Element::PRESSURE_DEFAULT
@@ -486,11 +497,18 @@ pub(crate) fn retrieve_modifier_keys(modifier: gdk::ModifierType) -> HashSet<Mod
 }
 
 fn retrieve_pen_mode(event: &gdk::Event) -> Option<PenMode> {
-    let device_tool = event.device_tool()?;
-    match device_tool.tool_type() {
-        gdk::DeviceToolType::Pen => Some(PenMode::Pen),
-        gdk::DeviceToolType::Eraser => Some(PenMode::Eraser),
-        _ => None,
+    // for the eraser or device to work, we need to know the device_tool
+    let device_tool = event.device_tool(); // no mode if the device_tool can't be retrieved
+    match device_tool {
+        Some(device) => match device.tool_type() {
+            gdk::DeviceToolType::Pen => Some(PenMode::Pen),
+            gdk::DeviceToolType::Eraser => Some(PenMode::Eraser),
+            _ => None,
+        },
+        None => {
+            trace!("no device tool found here");
+            None
+        }
     }
 }
 

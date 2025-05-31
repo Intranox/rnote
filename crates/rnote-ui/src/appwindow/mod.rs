@@ -276,9 +276,11 @@ impl RnAppWindow {
 
     // Returns true if the flags indicate that any loop that handles the flags should be quit. (usually an async event loop)
     pub(crate) fn handle_widget_flags(&self, widget_flags: WidgetFlags, canvas: &RnCanvas) {
-        //debug!("handling widget flags: '{widget_flags:?}'");
+        debug!("handling widget flags: '{widget_flags:?}'");
 
         if widget_flags.redraw {
+            // queue draw ?
+            // This means widget‘s Gtk.WidgetClass.snapshot implementation will be called.
             canvas.queue_draw();
         }
         if widget_flags.resize {

@@ -90,7 +90,7 @@ impl PenBehaviour for Brush {
                         .config
                         .pens_config
                         .brush_config
-                        .new_style_seeds();
+                        .new_style_seeds(); // constant time
 
                     let brushstroke = Stroke::BrushStroke(BrushStroke::new(
                         element,
@@ -99,7 +99,7 @@ impl PenBehaviour for Brush {
                             .pens_config
                             .brush_config
                             .style_for_current_options(),
-                    ));
+                    )); // constant time
                     let current_stroke_key = engine_view.store.insert_stroke(
                         brushstroke,
                         Some(
@@ -109,13 +109,13 @@ impl PenBehaviour for Brush {
                                 .brush_config
                                 .layer_for_current_options(),
                         ),
-                    );
+                    ); //not constant time but very much not to explain for this
 
                     engine_view.store.regenerate_rendering_for_stroke(
                         current_stroke_key,
                         engine_view.camera.viewport(),
                         engine_view.camera.image_scale(),
-                    );
+                    ); //only applies to the stroke so constant time
 
                     self.state = BrushState::Drawing {
                         path_builder: new_builder(
@@ -220,6 +220,7 @@ impl PenBehaviour for Brush {
                         if n_segments != 0 {
                             if let Some(Stroke::BrushStroke(brushstroke)) =
                                 engine_view.store.get_stroke_mut(*current_stroke_key)
+                            // should be constant as well
                             {
                                 brushstroke.extend_w_segments(segments);
                                 widget_flags.store_modified = true;
@@ -266,7 +267,7 @@ impl PenBehaviour for Brush {
                                 engine_view.store.get_stroke_mut(*current_stroke_key)
                             {
                                 brushstroke.extend_w_segments(segments);
-                                widget_flags.store_modified = true;
+                                widget_flags.store_modified = true; //ofc the stroke is modified here
                             }
 
                             engine_view.store.append_rendering_last_segments(

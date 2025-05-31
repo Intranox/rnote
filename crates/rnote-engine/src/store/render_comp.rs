@@ -96,6 +96,14 @@ impl StrokeStore {
             .unwrap_or(false)
     }
 
+    #[cfg(feature = "ui")]
+    pub(crate) fn hold_rendernode(&self, key: StrokeKey) -> bool {
+        self.render_components
+            .get(key)
+            .map(|s| !s.rendernodes.is_empty())
+            .unwrap_or(false)
+    }
+
     pub(crate) fn regenerate_rendering_for_stroke(
         &mut self,
         key: StrokeKey,
@@ -498,6 +506,11 @@ impl StrokeStore {
 
         snapshot.push_clip(&graphene::Rect::from_p2d_aabb(doc_bounds));
 
+        // does the rtree slow down that much with larger stroke content
+        // query issue ?
+        // could we cache the output ? for a viewport that doesn't move
+        // for stroke content that hasn't changed except the current stroke in progress
+        // could be a wortwhile optim
         for key in self.stroke_keys_as_rendered_intersecting_bounds(viewport) {
             if let (Some(stroke), Some(render_comp)) = (
                 self.stroke_components.get(key),

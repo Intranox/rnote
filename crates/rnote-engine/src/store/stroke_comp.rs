@@ -12,6 +12,7 @@ use rnote_compose::penpath::Element;
 use rnote_compose::shapes::Shapeable;
 use rnote_compose::transform::Transformable;
 use std::sync::Arc;
+use std::time::SystemTime;
 #[cfg(feature = "ui")]
 use tracing::error;
 
@@ -80,10 +81,22 @@ impl StrokeStore {
         &self,
         bounds: Aabb,
     ) -> Vec<StrokeKey> {
-        self.keys_sorted_chrono_intersecting_bounds(bounds)
+        let now = SystemTime::now();
+        let out = self
+            .keys_sorted_chrono_intersecting_bounds(bounds)
             .into_iter()
             .filter(|&key| !(self.trashed(key).unwrap_or(false)))
-            .collect::<Vec<StrokeKey>>()
+            .collect::<Vec<StrokeKey>>();
+        println!(
+            "stroke_keys_as_rendered_intersecting_bounds took {:?}",
+            now.elapsed()
+        ); // is the same thing but sorted by time
+        // actually this shouldn't take that much time
+        // maybe this has to do with gtk management ?
+        // on the issue even if the store is very large
+        // we see that we have the correct nof element holding images
+
+        out
     }
 
     /// Stroke keys contained in the given bounds, in the order that they should be rendered.
