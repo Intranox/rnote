@@ -17,7 +17,7 @@ use rnote_compose::builders::{
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{PenEvent, PenProgress};
 use rnote_compose::penpath::{Element, Segment};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 #[derive(Debug)]
 enum BrushState {
