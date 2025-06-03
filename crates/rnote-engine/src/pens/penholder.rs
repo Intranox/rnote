@@ -187,6 +187,7 @@ impl PenHolder {
         now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventPropagation, WidgetFlags) {
+        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         if let Some(pen_mode) = pen_mode {
@@ -209,6 +210,11 @@ impl PenHolder {
         //
         // This is also needed because pens might have claimed/requested an animation frame.
         widget_flags.redraw = true;
+        let elapsed = start_time.elapsed();
+        println!(
+            "handle_pen_event completed in {:.2?}",
+            elapsed
+        );
 
         (event_result.propagate, widget_flags)
     }
@@ -217,8 +223,14 @@ impl PenHolder {
     ///
     /// Can request another frame using `EngineViewMut#animation.claim_frame()`.
     pub fn handle_animation_frame(&mut self, engine_view: &mut EngineViewMut, optimize_epd: bool) {
+        let start_time = Instant::now();
         self.current_pen
             .handle_animation_frame(engine_view, optimize_epd);
+        let elapsed = start_time.elapsed();
+        println!(
+            "handle_animation_frame completed in {:.2?}",
+            elapsed
+        );
     }
 
     /// Handle a pressed shortcut key.
@@ -329,6 +341,7 @@ impl PenHolder {
         _now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventPropagation, WidgetFlags) {
+        let start_time = Instant::now();
         const MOVE_VIEW_FACTOR: f64 = 0.33;
         let mut widget_flags = WidgetFlags::default();
 
@@ -425,6 +438,11 @@ impl PenHolder {
                 _ => EventPropagation::Proceed,
             },
         };
+        let elapsed = start_time.elapsed();
+        println!(
+            "handle_pen_event_global completed in {:.2?}",
+            elapsed
+        );
 
         (propagate, widget_flags)
     }
@@ -434,6 +452,7 @@ impl PenHolder {
         progress: PenProgress,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
+        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         match progress {
@@ -450,6 +469,11 @@ impl PenHolder {
 
         self.progress = progress;
 
+        let elapsed = start_time.elapsed();
+        println!(
+            "handle_pen_progress completed in {:.2?}",
+            elapsed
+        );
         widget_flags
     }
 
@@ -485,17 +509,11 @@ impl DrawableOnDoc for PenHolder {
         cx: &mut piet_cairo::CairoRenderContext,
         engine_view: &EngineView,
     ) -> anyhow::Result<()> {
-        let start_time = Instant::now();
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
         self.current_pen.draw_on_doc(cx, engine_view)?;
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        let elapsed = start_time.elapsed();
-        println!(
-            "draw_on_doc completed in {:.2?}",
-            elapsed
-        );
         Ok(())
     }
 }
