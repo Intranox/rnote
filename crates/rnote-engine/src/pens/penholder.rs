@@ -485,11 +485,17 @@ impl DrawableOnDoc for PenHolder {
         cx: &mut piet_cairo::CairoRenderContext,
         engine_view: &EngineView,
     ) -> anyhow::Result<()> {
+        let start_time = Instant::now();
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
         self.current_pen.draw_on_doc(cx, engine_view)?;
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let elapsed = start_time.elapsed();
+        println!(
+            "draw_on_doc completed in {:.2?}",
+            elapsed
+        );
         Ok(())
     }
 }
