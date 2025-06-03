@@ -139,6 +139,7 @@ impl Engine {
 
     /// Regenerate the background tile image, origin indicator and updates the background rendering.
     pub fn background_rendering_regenerate(&mut self) -> WidgetFlags {
+        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
         let image_scale = self.camera.image_scale();
         let scale_factor = self.camera.scale_factor();
@@ -166,6 +167,11 @@ impl Engine {
 
         widget_flags |= self.update_background_rendering_current_viewport();
         widget_flags.redraw = true;
+        let elapsed = start_time.elapsed();
+        println!(
+            "background_rendering_regenerate completed in {:.2?}",
+            elapsed
+        );
         widget_flags
     }
 
@@ -176,6 +182,7 @@ impl Engine {
         snapshot: &gtk4::Snapshot,
         surface_bounds: p2d::bounding_volume::Aabb,
     ) -> anyhow::Result<()> {
+        let start_time = Instant::now();
         use crate::drawable::DrawableOnDoc;
         use crate::engine::visual_debug;
         use crate::engine_view;
@@ -217,6 +224,11 @@ impl Engine {
             visual_debug::draw_statistics_to_gtk_snapshot(snapshot, self, surface_bounds)?;
         }
 
+        let elapsed = start_time.elapsed();
+        println!(
+            "draw_to_gtk_snapshot completed in {:.2?}",
+            elapsed
+        );
         Ok(())
     }
 
