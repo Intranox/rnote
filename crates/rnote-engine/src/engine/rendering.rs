@@ -5,14 +5,12 @@ use p2d::bounding_volume::Aabb;
 use piet::RenderContext;
 use rnote_compose::color;
 use tracing::error;
-use std::time::Instant;
 
 impl Engine {
     /// Update the background rendering for the current viewport.
     ///
     /// If the background pattern or zoom has changed, the background pattern needs to be regenerated first.
     pub fn update_background_rendering_current_viewport(&mut self) -> WidgetFlags {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         #[cfg(feature = "ui")]
@@ -87,17 +85,11 @@ impl Engine {
         }
 
         widget_flags.redraw = true;
-        let elapsed = start_time.elapsed();
-        println!(
-            "update_background_rendering_current_viewport completed in {:.2?}",
-            elapsed
-        );
         widget_flags
     }
 
     /// Update the content rendering for the current viewport.
     pub fn update_content_rendering_current_viewport(&mut self) -> WidgetFlags {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
         self.store.regenerate_rendering_in_viewport_threaded(
             self.engine_tasks_tx(),
@@ -106,11 +98,6 @@ impl Engine {
             self.camera.image_scale(),
         );
         widget_flags.redraw = true;
-        let elapsed = start_time.elapsed();
-        println!(
-            "update_content_rendering_current_viewport completed in {:.2?}",
-            elapsed
-        );
         widget_flags
     }
 
@@ -139,7 +126,6 @@ impl Engine {
 
     /// Regenerate the background tile image, origin indicator and updates the background rendering.
     pub fn background_rendering_regenerate(&mut self) -> WidgetFlags {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
         let image_scale = self.camera.image_scale();
         let scale_factor = self.camera.scale_factor();
@@ -167,11 +153,6 @@ impl Engine {
 
         widget_flags |= self.update_background_rendering_current_viewport();
         widget_flags.redraw = true;
-        let elapsed = start_time.elapsed();
-        println!(
-            "background_rendering_regenerate completed in {:.2?}",
-            elapsed
-        );
         widget_flags
     }
 
@@ -182,7 +163,6 @@ impl Engine {
         snapshot: &gtk4::Snapshot,
         surface_bounds: p2d::bounding_volume::Aabb,
     ) -> anyhow::Result<()> {
-        let start_time = Instant::now();
         use crate::drawable::DrawableOnDoc;
         use crate::engine::visual_debug;
         use crate::engine_view;
@@ -224,11 +204,6 @@ impl Engine {
             visual_debug::draw_statistics_to_gtk_snapshot(snapshot, self, surface_bounds)?;
         }
 
-        let elapsed = start_time.elapsed();
-        println!(
-            "draw_to_gtk_snapshot completed in {:.2?}",
-            elapsed
-        );
         Ok(())
     }
 
