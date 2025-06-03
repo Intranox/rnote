@@ -64,6 +64,7 @@ impl PenBehaviour for Brush {
         now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventResult<PenProgress>, WidgetFlags) {
+        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         let event_result = match (&mut self.state, event) {
@@ -266,6 +267,11 @@ impl PenBehaviour for Brush {
             }
         };
 
+        let elapsed = start_time.elapsed();
+        println!(
+            "handle_event [Brush] completed in {:.2?}",
+            elapsed
+        );
         (event_result, widget_flags)
     }
 }
@@ -291,6 +297,7 @@ impl DrawableOnDoc for Brush {
         cx: &mut piet_cairo::CairoRenderContext,
         engine_view: &EngineView,
     ) -> anyhow::Result<()> {
+        let start_time = Instant::now();
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
         match &self.state {
@@ -313,6 +320,11 @@ impl DrawableOnDoc for Brush {
         }
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let elapsed = start_time.elapsed();
+        println!(
+            "draw_on_doc [Brush] completed in {:.2?}",
+            elapsed
+        );
         Ok(())
     }
 }
