@@ -176,11 +176,8 @@ impl PenBehaviour for Brush {
                 },
                 pen_event,
             ) => {
-                let t0 = Instant::now();
-                let builder_result = path_builder.handle_event(pen_event, now, Constraints::default());
-                let dt = t0.elapsed();
-                println!("path_builder.handle_event took {:?}", dt);
-
+                let builder_result =
+                    path_builder.handle_event(pen_event, now, Constraints::default());
                 let handled = builder_result.handled;
                 let propagate = builder_result.propagate;
 
@@ -200,27 +197,19 @@ impl PenBehaviour for Brush {
                         let n_segments = segments.len();
 
                         if n_segments != 0 {
-                            let t1 = Instant::now();
                             if let Some(Stroke::BrushStroke(brushstroke)) =
                                 engine_view.store.get_stroke_mut(*current_stroke_key)
                             {
                                 brushstroke.extend_w_segments(segments);
                                 widget_flags.store_modified = true;
                             }
-                            println!("Extending brush stroke took {:?}", t1.elapsed());
 
-                            let t2 = Instant::now();
                             engine_view.store.append_rendering_last_segments(
                                 engine_view.tasks_tx.clone(),
                                 *current_stroke_key,
                                 n_segments,
                                 engine_view.camera.viewport(),
                                 engine_view.camera.image_scale(),
-                            );
-                            println!(
-                                "[Brush] append_rendering_last_segments ({} segments) took {:?}",
-                                n_segments,
-                                t2.elapsed()
                             );
                         }
 
@@ -250,14 +239,12 @@ impl PenBehaviour for Brush {
                         engine_view
                             .store
                             .update_geometry_for_stroke(*current_stroke_key);
-                        let t3 = Instant::now();
                         engine_view.store.regenerate_rendering_for_stroke_threaded(
                             engine_view.tasks_tx.clone(),
                             *current_stroke_key,
                             engine_view.camera.viewport(),
                             engine_view.camera.image_scale(),
                         );
-                        println!("[Brush] regenerate_rendering_for_stroke_threaded took {:?}", t3.elapsed());
                         widget_flags |= engine_view
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
