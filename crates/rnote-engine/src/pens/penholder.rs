@@ -187,7 +187,6 @@ impl PenHolder {
         now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventPropagation, WidgetFlags) {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         if let Some(pen_mode) = pen_mode {
@@ -195,20 +194,9 @@ impl PenHolder {
         }
 
         // Handle the event with the current pen
-        let t0 = Instant::now();
-        let clone = event.clone();
-        println!(
-            "handle_pen_event [clone] completed in {:.2?}",
-            t0.elapsed()
-        );
-        let t1 = Instant::now();
         let (mut event_result, wf) = self
             .current_pen
-            .handle_event(clone, now, engine_view);
-        println!(
-            "handle_pen_event [handle_event] completed in {:.2?}",
-            t1.elapsed()
-        );
+            .handle_event(event.clone(), now, engine_view);
         widget_flags |= wf | self.handle_pen_progress(event_result.progress, engine_view);
 
         if !event_result.handled {
@@ -220,17 +208,7 @@ impl PenHolder {
         // Always redraw after handling a pen event.
         //
         // This is also needed because pens might have claimed/requested an animation frame.
-        let t2 = Instant::now();
         widget_flags.redraw = true;
-        println!(
-            "handle_pen_event [redraw] completed in {:.2?}",
-            t2.elapsed()
-        );
-        let elapsed = start_time.elapsed();
-        println!(
-            "handle_pen_event completed in {:.2?}",
-            elapsed
-        );
 
         (event_result.propagate, widget_flags)
     }
@@ -239,14 +217,8 @@ impl PenHolder {
     ///
     /// Can request another frame using `EngineViewMut#animation.claim_frame()`.
     pub fn handle_animation_frame(&mut self, engine_view: &mut EngineViewMut, optimize_epd: bool) {
-        let start_time = Instant::now();
         self.current_pen
             .handle_animation_frame(engine_view, optimize_epd);
-        let elapsed = start_time.elapsed();
-        println!(
-            "handle_animation_frame completed in {:.2?}",
-            elapsed
-        );
     }
 
     /// Handle a pressed shortcut key.
@@ -357,7 +329,6 @@ impl PenHolder {
         _now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventPropagation, WidgetFlags) {
-        let start_time = Instant::now();
         const MOVE_VIEW_FACTOR: f64 = 0.33;
         let mut widget_flags = WidgetFlags::default();
 
@@ -454,11 +425,6 @@ impl PenHolder {
                 _ => EventPropagation::Proceed,
             },
         };
-        let elapsed = start_time.elapsed();
-        println!(
-            "handle_pen_event_global completed in {:.2?}",
-            elapsed
-        );
 
         (propagate, widget_flags)
     }
@@ -468,7 +434,6 @@ impl PenHolder {
         progress: PenProgress,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         match progress {
@@ -485,11 +450,6 @@ impl PenHolder {
 
         self.progress = progress;
 
-        let elapsed = start_time.elapsed();
-        println!(
-            "handle_pen_progress completed in {:.2?}",
-            elapsed
-        );
         widget_flags
     }
 
