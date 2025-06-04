@@ -195,9 +195,20 @@ impl PenHolder {
         }
 
         // Handle the event with the current pen
+        let t0 = Instant::now();
+        let clone = event.clone();
+        println!(
+            "handle_pen_event [clone] completed in {:.2?}",
+            t0.elapsed()
+        );
+        let t1 = Instant::now();
         let (mut event_result, wf) = self
             .current_pen
-            .handle_event(event.clone(), now, engine_view);
+            .handle_event(clone, now, engine_view);
+        println!(
+            "handle_pen_event [handle_event] completed in {:.2?}",
+            t1.elapsed()
+        );
         widget_flags |= wf | self.handle_pen_progress(event_result.progress, engine_view);
 
         if !event_result.handled {
@@ -209,7 +220,12 @@ impl PenHolder {
         // Always redraw after handling a pen event.
         //
         // This is also needed because pens might have claimed/requested an animation frame.
+        let t2 = Instant::now();
         widget_flags.redraw = true;
+        println!(
+            "handle_pen_event [clone] completed in {:.2?}",
+            t0.elapsed()
+        );
         let elapsed = start_time.elapsed();
         println!(
             "handle_pen_event completed in {:.2?}",
