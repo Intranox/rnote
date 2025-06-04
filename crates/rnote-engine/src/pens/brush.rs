@@ -236,48 +236,23 @@ impl PenBehaviour for Brush {
                         }
 
                         // Finish up the last stroke
-                        let t0 = Instant::now();
-                        let t1 = Instant::now();
                         engine_view
                             .store
                             .update_geometry_for_stroke(*current_stroke_key);
-                        println!(
-                            "handle_event [update geometry] completed in {:.2?}",
-                            t1.elapsed()
-                        );
-                        let t2 = Instant::now();
                         engine_view.store.regenerate_rendering_for_stroke_threaded(
                             engine_view.tasks_tx.clone(),
                             *current_stroke_key,
                             engine_view.camera.viewport(),
                             engine_view.camera.image_scale(),
                         );
-                        println!(
-                            "handle_event [regenerate rendering] completed in {:.2?}",
-                            t2.elapsed()
-                        );
-                        let t3 = Instant::now();
                         widget_flags |= engine_view
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
-                        println!(
-                            "handle_event [autoexpand] completed in {:.2?}",
-                            t3.elapsed()
-                        );
 
-                        let t4 = Instant::now();
                         self.state = BrushState::Idle;
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
-                        println!(
-                            "handle_event [widget flags] completed in {:.2?}",
-                            t4.elapsed()
-                        );
-                        println!(
-                            "handle_event [clone] completed in {:.2?}",
-                            t0.elapsed()
-                        );
 
                         PenProgress::Finished
                     }
