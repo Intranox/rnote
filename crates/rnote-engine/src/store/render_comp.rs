@@ -242,8 +242,14 @@ impl StrokeStore {
         viewport: Aabb,
         image_scale: f64,
     ) {
+        let t0 = Instant::now();
         let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
+        println!(
+            "render_component completed in {:.2?}",
+            t0.elapsed()
+        );
 
+        let t1 = Instant::now();
         for key in keys {
             if let (Some(stroke), Some(render_comp)) = (
                 self.stroke_components.get(key),
@@ -314,6 +320,10 @@ impl StrokeStore {
                 );
             }
         }
+        println!(
+            "for keys completed in {:.2?}",
+            t1.elapsed()
+        );
     }
 
     /// Clear all rendering for all strokes.
