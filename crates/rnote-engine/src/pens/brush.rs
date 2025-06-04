@@ -64,7 +64,6 @@ impl PenBehaviour for Brush {
         now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventResult<PenProgress>, WidgetFlags) {
-        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
 
         let event_result = match (&mut self.state, event) {
@@ -95,6 +94,7 @@ impl PenBehaviour for Brush {
                             .brush_config
                             .style_for_current_options(),
                     ));
+                    let t0 = Instant::now();
                     let current_stroke_key = engine_view.store.insert_stroke(
                         brushstroke,
                         Some(
@@ -105,13 +105,23 @@ impl PenBehaviour for Brush {
                                 .layer_for_current_options(),
                         ),
                     );
+                    println!(
+                        "handle_event [insert_stroke] completed in {:.2?}",
+                        t0.elapsed()
+                    );
 
+                    let t1 = Instant::now();
                     engine_view.store.regenerate_rendering_for_stroke(
                         current_stroke_key,
                         engine_view.camera.viewport(),
                         engine_view.camera.image_scale(),
                     );
+                    println!(
+                        "handle_event [regenerate_rendering] completed in {:.2?}",
+                        t1.elapsed()
+                    );
 
+                    let t2 = Instant::now();
                     self.state = BrushState::Drawing {
                         path_builder: new_builder(
                             engine_view.config.pens_config.brush_config.builder_type,
@@ -120,6 +130,10 @@ impl PenBehaviour for Brush {
                         ),
                         current_stroke_key,
                     };
+                    println!(
+                        "handle_pen_event [Drawing] completed in {:.2?}",
+                        t2.elapsed()
+                    );
 
                     EventResult {
                         handled: true,
@@ -146,6 +160,7 @@ impl PenBehaviour for Brush {
                 PenEvent::Cancel,
             ) => {
                 // Finish up the last stroke
+                let t3 = Instant::now();
                 engine_view
                     .store
                     .update_geometry_for_stroke(*current_stroke_key);
@@ -158,6 +173,10 @@ impl PenBehaviour for Brush {
                 widget_flags |= engine_view
                     .document
                     .resize_autoexpand(engine_view.store, engine_view.camera);
+                println!(
+                    "handle_pen_event [update_geometry and regenerate] completed in {:.2?}",
+                    t3.elapsed()
+                );
 
                 self.state = BrushState::Idle;
 
@@ -177,10 +196,15 @@ impl PenBehaviour for Brush {
                 },
                 pen_event,
             ) => {
+                let t4 = Instant::now();
                 let builder_result =
                     path_builder.handle_event(pen_event, now, Constraints::default());
                 let handled = builder_result.handled;
                 let propagate = builder_result.propagate;
+                println!(
+                    "handle_event [builder] completed in {:.2?}",
+                    t4.elapsed()
+                );
 
                 let progress = match builder_result.progress {
                     BuilderProgress::InProgress => {
@@ -195,6 +219,7 @@ impl PenBehaviour for Brush {
                             trigger_brush_sound(engine_view);
                         }
 
+                        let t5 = Instant::now();
                         let n_segments = segments.len();
 
                         if n_segments != 0 {
@@ -213,10 +238,15 @@ impl PenBehaviour for Brush {
                                 engine_view.camera.image_scale(),
                             );
                         }
+                        println!(
+                            "handle_event [progress builder] completed in {:.2?}",
+                            t5.elapsed()
+                        );
 
                         PenProgress::InProgress
                     }
                     BuilderProgress::Finished(segments) => {
+                        let t6 = Instant::now();
                         let n_segments = segments.len();
 
                         if n_segments != 0 {
@@ -235,8 +265,13 @@ impl PenBehaviour for Brush {
                                 engine_view.camera.image_scale(),
                             );
                         }
+                        println!(
+                            "handle_pen_event [Finish builder] completed in {:.2?}",
+                            t6.elapsed()
+                        );
 
                         // Finish up the last stroke
+                        let t7 = Instant::now();
                         engine_view
                             .store
                             .update_geometry_for_stroke(*current_stroke_key);
@@ -254,6 +289,10 @@ impl PenBehaviour for Brush {
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
+                        println!(
+                            "handle_pen_event [Update last stroke] completed in {:.2?}",
+                            t7.elapsed()
+                        );
 
                         PenProgress::Finished
                     }
@@ -267,11 +306,6 @@ impl PenBehaviour for Brush {
             }
         };
 
-        let elapsed = start_time.elapsed();
-        println!(
-            "handle_event [Brush] completed in {:.2?}",
-            elapsed
-        );
         (event_result, widget_flags)
     }
 }
@@ -297,7 +331,6 @@ impl DrawableOnDoc for Brush {
         cx: &mut piet_cairo::CairoRenderContext,
         engine_view: &EngineView,
     ) -> anyhow::Result<()> {
-        let start_time = Instant::now();
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
         match &self.state {
@@ -320,11 +353,6 @@ impl DrawableOnDoc for Brush {
         }
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
-        let elapsed = start_time.elapsed();
-        println!(
-            "draw_on_doc [Brush] completed in {:.2?}",
-            elapsed
-        );
         Ok(())
     }
 }
