@@ -223,8 +223,8 @@ impl PenHolder {
         let t2 = Instant::now();
         widget_flags.redraw = true;
         println!(
-            "handle_pen_event [clone] completed in {:.2?}",
-            t0.elapsed()
+            "handle_pen_event [redraw] completed in {:.2?}",
+            t2.elapsed()
         );
         let elapsed = start_time.elapsed();
         println!(
