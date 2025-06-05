@@ -244,88 +244,83 @@ impl StrokeStore {
         image_scale: f64,
     ) {
         let t0 = Instant::now();
-        let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
-        println!(
-            "render_component completed in {:.2?}",
-            t0.elapsed()
-        );
-
+        let keys = self.render_components.keys().cloned().collect::<Vec<StrokeKey>>();
+        println!("render_component completed in {:.2?}", t0.elapsed());
+    
         let t1 = Instant::now();
-        for key in keys {
-            if let (Some(stroke), Some(render_comp)) = (
-                self.stroke_components.get(key),
-                self.render_components.get_mut(key),
-            ) {
-                let tasks_tx = tasks_tx.clone();
-                let stroke_bounds = stroke.bounds();
-                let viewport_extended =
-                    viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
-
-                // skip and clear image buffer if stroke is not in viewport
-                if !viewport_extended.intersects(&stroke_bounds) {
+    
+        // Estendi il viewport una sola volta
+        let viewport_extended =
+            viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
+    
+        // Fase 1: raccogli dati clonati e leggeri per il processing parallelo
+        let tasks: Vec<_> = keys
+            .into_iter()
+            .filter_map(|key| {
+                let stroke = self.stroke_components.get(&key)?.clone();
+                let render_comp = self.render_components.get_mut(&key)?;
+    
+                // Skip se non visibile
+                if !viewport_extended.intersects(&stroke.bounds()) {
                     #[cfg(feature = "ui")]
                     {
                         render_comp.rendernodes = vec![];
                     }
                     render_comp.images = vec![];
                     render_comp.state = RenderCompState::Dirty;
-                    continue;
+                    return None;
                 }
-
-                // only check if rerendering is not forced
+    
                 if !force_regenerate {
                     match render_comp.state {
-                        RenderCompState::Complete | RenderCompState::BusyRenderingInTask => {
-                            continue;
-                        }
+                        RenderCompState::Complete | RenderCompState::BusyRenderingInTask => return None,
                         RenderCompState::ForViewport(old_viewport) => {
-                            /// This factor is applied on top of the viewport extents margin factor,
-                            /// so that rerendering is started a bit earlier to reaching
-                            /// the edges of the viewport of the current rendered images.
-                            const VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD: f64 = 0.7;
-
-                            if old_viewport.contains(
-                                &(viewport.extend_by(
-                                    viewport.extents()
-                                        * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
-                                        * VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD,
-                                )),
-                            ) {
-                                continue;
+                            const RERENDER_THRESHOLD: f64 = 0.7;
+                            let threshold_viewport = viewport.extend_by(
+                                viewport.extents()
+                                    * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
+                                    * RERENDER_THRESHOLD,
+                            );
+                            if old_viewport.contains(&threshold_viewport) {
+                                return None;
                             }
                         }
                         RenderCompState::Dirty => {}
                     }
                 }
-
-                // indicates that a task has now started to render the stroke
+    
                 render_comp.state = RenderCompState::BusyRenderingInTask;
-                let stroke = stroke.clone();
-
-                // Spawn a new thread for image rendering
-                rayon::spawn(
-                    move || match stroke.gen_images(viewport_extended, image_scale) {
-                        Ok(images) => {
-                            tasks_tx.send(EngineTask::UpdateStrokeWithImages {
-                                key,
-                                images,
-                                image_scale,
-                            });
-                        }
-                        Err(e) => {
-                            error!(
-                                "Generating stroke images failed stroke while regenerating rendering in viewport `{viewport:?}`, stroke key: {key:?}, Err: {e:?}"
-                            );
-                        }
-                    },
-                );
-            }
+    
+                Some((key, stroke))
+            })
+            .collect();
+    
+        // Fase 2: genera immagini in parallelo su thread separati
+        for (key, stroke) in tasks {
+            let tasks_tx = tasks_tx.clone();
+            let viewport_extended = viewport_extended.clone();
+            rayon::spawn(move || {
+                match stroke.gen_images(viewport_extended, image_scale) {
+                    Ok(images) => {
+                        tasks_tx.send(EngineTask::UpdateStrokeWithImages {
+                            key,
+                            images,
+                            image_scale,
+                        });
+                    }
+                    Err(e) => {
+                        error!(
+                            "Generating stroke images failed in regenerate_rendering_in_viewport_threaded. Key: {:?}, Err: {:?}",
+                            key, e
+                        );
+                    }
+                }
+            });
         }
-        println!(
-            "for keys completed in {:.2?}",
-            t1.elapsed()
-        );
+    
+        println!("for keys completed in {:.2?}", t1.elapsed());
     }
+    
 
     /// Clear all rendering for all strokes.
     pub(crate) fn clear_rendering(&mut self) {
