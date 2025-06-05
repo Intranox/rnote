@@ -5,7 +5,12 @@ use p2d::bounding_volume::Aabb;
 use piet::RenderContext;
 use rnote_compose::color;
 use tracing::error;
-use std::time::Instant;
+use std::time::{Instant, Duration};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+
+static SHOULD_RENDER: AtomicBool = AtomicBool::new(true);
 
 impl Engine {
     /// Update the background rendering for the current viewport.
@@ -99,18 +104,32 @@ impl Engine {
     pub fn update_content_rendering_current_viewport(&mut self) -> WidgetFlags {
         let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
-        self.store.regenerate_rendering_in_viewport_threaded(
-            self.engine_tasks_tx(),
-            false,
-            self.camera.viewport(),
-            self.camera.image_scale(),
-        );
+    
+        // Invece di renderizzare subito...
+        if SHOULD_RENDER.swap(false, Ordering::SeqCst) {
+            let tasks_tx = self.engine_tasks_tx();
+            let viewport = self.camera.viewport();
+            let image_scale = self.camera.image_scale();
+            let store = self.store.clone(); // Assicurati che sia Arc o che possa essere clonato
+    
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(16)); // piccolo delay per evitare blocchi visibili
+                store.regenerate_rendering_in_viewport_threaded(
+                    tasks_tx,
+                    false,
+                    viewport,
+                    image_scale,
+                );
+                SHOULD_RENDER.store(true, Ordering::SeqCst);
+            });
+        }
+    
         widget_flags.redraw = true;
-        let elapsed = start_time.elapsed();
         println!(
             "update_content_rendering_current_viewport completed in {:.2?}",
-            elapsed
+            start_time.elapsed()
         );
+    
         widget_flags
     }
 
