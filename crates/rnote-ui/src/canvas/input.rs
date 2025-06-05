@@ -402,10 +402,10 @@ fn retrieve_pointer_elements(
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::X)],
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Y)]
             ]);
-            let pressure = if true {
-                //is_stylus {
+            let pressure = if is_stylus {
                 // so it seems to work well now with no issue
                 // but a mouse will return 0 ..
+                // !! can also fail on the other option !!
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Pressure)]
             } else {
                 Element::PRESSURE_DEFAULT
@@ -455,8 +455,8 @@ fn retrieve_pointer_elements(
         .position()
         .map(|(x, y)| transform_pos(na::vector![x, y]))?;
 
-    let pressure = if true {
-        //if is_stylus {
+    // on recent gtk this DOES fail
+    let pressure = if is_stylus {
         event.axis(gdk::AxisUse::Pressure).unwrap()
     } else {
         Element::PRESSURE_DEFAULT
