@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{HopSlotMap, SecondaryMap};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use tracing::debug;
 
 slotmap::new_key_type! {
@@ -95,7 +95,7 @@ pub struct StrokeStore {
     ///
     /// Needs to be updated with `update_with_key()` when strokes changed their geometry or position!
     #[serde(skip)]
-    key_tree: KeyTree,
+    pub(crate) key_tree: KeyTree,
 }
 
 impl Default for StrokeStore {
@@ -147,6 +147,7 @@ impl StrokeStore {
         let tree_objects = self
             .stroke_components
             .iter()
+            .filter(|(key, _stroke)| self.trashed(*key).is_some_and(|x| !x))
             .map(|(key, stroke)| (key, stroke.bounds()))
             .collect();
         self.key_tree.rebuild_from_vec(tree_objects);
@@ -319,13 +320,20 @@ impl StrokeStore {
         stroke: Stroke,
         layer: Option<StrokeLayer>,
     ) -> StrokeKey {
+        let now = SystemTime::now();
         let bounds = stroke.bounds();
+
+        let stroke_bounds_time = now.elapsed();
+
         let layer = layer.unwrap_or_else(|| stroke.extract_default_layer());
 
         let key = Arc::make_mut(&mut self.stroke_components).insert(Arc::new(stroke));
+
         self.key_tree.insert_with_key(key, bounds);
+
         self.chrono_counter += 1;
 
+        let insertion_starts = SystemTime::now();
         Arc::make_mut(&mut self.trash_components).insert(key, Arc::new(TrashComponent::default()));
         Arc::make_mut(&mut self.selection_components)
             .insert(key, Arc::new(SelectionComponent::default()));
@@ -335,6 +343,13 @@ impl StrokeStore {
         );
         self.render_components
             .insert(key, RenderComponent::default());
+        let time_insetion = insertion_starts.elapsed();
+
+        let elapsed = now.elapsed();
+        println!(
+            "insertion of the stroke took {:?} seconds with {:?} seconds for stroke bounds, {:?} for insertions",
+            elapsed, stroke_bounds_time, time_insetion
+        );
 
         key
     }

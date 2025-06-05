@@ -21,7 +21,6 @@ impl Engine {
             use rnote_compose::ext::AabbExt;
 
             let viewport = self.camera.viewport();
-            let mut rendernodes: Vec<gsk::RenderNode> = vec![];
 
             if let Some(image) = &self.background_tile_image {
                 // Only create the texture once, it is expensive
@@ -35,21 +34,20 @@ impl Engine {
                     }
                 };
 
-                for split_bounds in viewport.split_extended_origin_aligned(
+                let origin_aabb = viewport.get_origin(
                     self.document.config.background.tile_size(),
                     SplitOrder::default(),
-                ) {
-                    rendernodes.push(
-                        gsk::TextureNode::new(
-                            &new_texture,
-                            &graphene::Rect::from_p2d_aabb(split_bounds),
-                        )
-                        .upcast(),
-                    );
-                }
-            }
+                );
 
-            self.background_rendernodes = rendernodes;
+                self.background_rendernode = Some(
+                    gsk::TextureNode::new(
+                        &new_texture,
+                        &graphene::Rect::from_p2d_aabb(origin_aabb),
+                    )
+                    .upcast(),
+                );
+                self.origin_background_rendernode = Some(origin_aabb);
+            }
         }
 
         #[cfg(feature = "ui")]
@@ -117,7 +115,8 @@ impl Engine {
         self.origin_indicator_image.take();
         #[cfg(feature = "ui")]
         {
-            self.background_rendernodes.clear();
+            self.background_rendernode = None;
+            self.origin_background_rendernode = None;
             self.origin_indicator_rendernode.take();
         }
         widget_flags.redraw = true;
@@ -163,10 +162,14 @@ impl Engine {
         snapshot: &gtk4::Snapshot,
         surface_bounds: p2d::bounding_volume::Aabb,
     ) -> anyhow::Result<()> {
+        use std::time::SystemTime;
+
         use crate::drawable::DrawableOnDoc;
         use crate::engine::visual_debug;
         use crate::engine_view;
         use gtk4::prelude::*;
+
+        let start_rendering = SystemTime::now();
 
         let doc_bounds = self.document.bounds();
         let viewport = self.camera.viewport();
@@ -174,12 +177,30 @@ impl Engine {
 
         snapshot.save();
         snapshot.transform(Some(&camera_transform));
-        self.draw_document_shadow_to_gtk_snapshot(snapshot);
-        self.draw_background_to_gtk_snapshot(snapshot)?;
-        self.draw_format_borders_to_gtk_snapshot(snapshot)?;
-        self.draw_origin_indicator_to_gtk_snapshot(snapshot)?;
+
+        let elapsed_snapshot_setup = start_rendering.elapsed();
+
+        // expensive but constant time : can we not translate ?
+        // seems like the gtk snapshot does NOT maintain layer so we'd need
+        // to hold stacked widgets for this
+        // OR hold onto render nodes and translates then instead
+        let draw_doc_shadow_start = SystemTime::now();
+        self.draw_document_shadow_to_gtk_snapshot(snapshot); // constant time (or should be)
+        let draw_doc_shadow_elapsed = draw_doc_shadow_start.elapsed();
+        let draw_bgrd_start = SystemTime::now();
+        self.draw_background_to_gtk_snapshot(snapshot)?; // constant time (or should be)
+        let draw_bgrd_elapsed = draw_bgrd_start.elapsed();
+        let draw_fmt_start = SystemTime::now();
+        self.draw_format_borders_to_gtk_snapshot(snapshot)?; // constant time (or should be)
+        let draw_fmt_elapsed = draw_fmt_start.elapsed();
+        let draw_orig_start = SystemTime::now();
+        self.draw_origin_indicator_to_gtk_snapshot(snapshot)?; // constant time (or should be)
+        let draw_orig_elapsed = draw_orig_start.elapsed();
+        let draw_stroke_start = SystemTime::now();
         self.store
             .draw_strokes_to_gtk_snapshot(snapshot, doc_bounds, viewport);
+        let draw_stroke_elapsed = draw_stroke_start.elapsed();
+
         snapshot.restore();
         /*
                let cairo_cx = snapshot.append_cairo(&graphene::Rect::from_p2d_aabb(surface_bounds));
@@ -192,8 +213,10 @@ impl Engine {
                    self.camera.image_scale(),
                );
         */
+        let penholder_draw_start = SystemTime::now();
         self.penholder
             .draw_on_doc_to_gtk_snapshot(snapshot, &engine_view!(self))?;
+        let penholder_elapsed = penholder_draw_start.elapsed();
 
         if self.config.read().visual_debug {
             snapshot.save();
@@ -204,6 +227,25 @@ impl Engine {
             visual_debug::draw_statistics_to_gtk_snapshot(snapshot, self, surface_bounds)?;
         }
 
+        //stats
+        println!(
+            "Time for `draw_to_gtk_snapshot` : {:?}
+             snapshot setup {:?}
+             draw shadow {:?}
+             draw background {:?}
+             draw fmt {:?}
+             draw orig {:?}
+             draw stroke {:?}
+             penholder {:?}",
+            start_rendering.elapsed(),
+            elapsed_snapshot_setup,
+            draw_doc_shadow_elapsed,
+            draw_bgrd_elapsed,
+            draw_fmt_elapsed,
+            draw_orig_elapsed,
+            draw_stroke_elapsed,
+            penholder_elapsed
+        );
         Ok(())
     }
 
@@ -251,17 +293,23 @@ impl Engine {
         snapshot.append_node(
             gsk::ColorNode::new(
                 &gdk::RGBA::from_compose_color(self.document.config.background.color),
-                //&gdk::RGBA::RED,
                 &graphene::Rect::from_p2d_aabb(doc_bounds),
             )
             .upcast(),
         );
-
-        for r in self.background_rendernodes.iter() {
-            snapshot.append_node(r);
-        }
-
         snapshot.pop();
+
+        if let (Some(bounds), Some(render_node)) = (
+            self.origin_background_rendernode,
+            self.background_rendernode.clone(),
+        ) {
+            snapshot.push_repeat(
+                &graphene::Rect::from_p2d_aabb(doc_bounds),
+                Some(&graphene::Rect::from_p2d_aabb(bounds)),
+            );
+            snapshot.append_node(render_node);
+            snapshot.pop();
+        }
         Ok(())
     }
 

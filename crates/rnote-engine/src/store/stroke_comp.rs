@@ -12,6 +12,7 @@ use rnote_compose::penpath::Element;
 use rnote_compose::shapes::Shapeable;
 use rnote_compose::transform::Transformable;
 use std::sync::Arc;
+use std::time::SystemTime;
 #[cfg(feature = "ui")]
 use tracing::error;
 
@@ -67,7 +68,7 @@ impl StrokeStore {
             .collect()
     }
 
-    /// Storke keys in the order that they should be rendered.
+    /// Stroke keys in the order that they should be rendered.
     pub(crate) fn stroke_keys_as_rendered(&self) -> Vec<StrokeKey> {
         self.keys_sorted_chrono()
             .into_iter()
@@ -80,10 +81,22 @@ impl StrokeStore {
         &self,
         bounds: Aabb,
     ) -> Vec<StrokeKey> {
-        self.keys_sorted_chrono_intersecting_bounds(bounds)
+        let now = SystemTime::now();
+        let out = self
+            .keys_sorted_chrono_intersecting_bounds(bounds)
             .into_iter()
             .filter(|&key| !(self.trashed(key).unwrap_or(false)))
-            .collect::<Vec<StrokeKey>>()
+            .collect::<Vec<StrokeKey>>();
+        println!(
+            "stroke_keys_as_rendered_intersecting_bounds took {:?}",
+            now.elapsed()
+        ); // is the same thing but sorted by time
+        // actually this shouldn't take that much time
+        // maybe this has to do with gtk management ?
+        // on the issue even if the store is very large
+        // we see that we have the correct nof element holding images
+
+        out
     }
 
     /// Stroke keys contained in the given bounds, in the order that they should be rendered.
@@ -127,17 +140,8 @@ impl StrokeStore {
 
     /// Calculate the height needed to fit all strokes.
     pub(crate) fn calc_height(&self) -> f64 {
-        let strokes_iter = self
-            .stroke_keys_unordered()
-            .into_iter()
-            .filter_map(|key| self.stroke_components.get(key));
-
-        let strokes_min_y = strokes_iter
-            .clone()
-            .fold(0.0, |acc, stroke| stroke.bounds().mins[1].min(acc));
-        let strokes_max_y = strokes_iter.fold(0.0, |acc, stroke| stroke.bounds().maxs[1].max(acc));
-
-        strokes_max_y - strokes_min_y
+        let bounds = self.key_tree.get_tree().root().envelope();
+        bounds.upper()[1] - bounds.lower()[1]
     }
 
     /// Calculate the width needed to fit all strokes.

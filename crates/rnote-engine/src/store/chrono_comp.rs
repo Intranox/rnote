@@ -124,6 +124,7 @@ impl StrokeStore {
 
         let mut keys = self.key_tree.keys_intersecting_bounds(bounds);
 
+        // scales with the elements but shouldn't matter that much
         keys.par_sort_unstable_by(|&first, &second| {
             if let (Some(first_chrono), Some(second_chrono)) =
                 (chrono_components.get(first), chrono_components.get(second))

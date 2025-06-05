@@ -9,6 +9,7 @@ use rnote_engine::ext::GraphenePointExt;
 use rnote_engine::pens::PenMode;
 use rnote_engine::pens::penholder::BacklogPolicy;
 use std::collections::HashSet;
+use std::ops::Add;
 use std::time::{Duration, Instant};
 use tracing::trace;
 
@@ -164,6 +165,7 @@ pub(crate) fn handle_pointer_controller_event(
         let pen_mode = retrieve_pen_mode(event);
 
         for (element, event_time) in elements {
+            // this is something I'm interested in: activate the trace
             trace!(?element, ?pen_state, ?modifier_keys, ?pen_mode, event_time_delta=?now.duration_since(event_time), msg="handle pen event element");
 
             // Workaround for https://github.com/flxzt/rnote/issues/785
@@ -322,6 +324,9 @@ pub(crate) fn reject_pointer_input(event: &gdk::Event, touch_drawing: bool) -> b
 fn event_is_stylus(event: &gdk::Event) -> bool {
     // As in gtk4 'gtkgesturestylus.c:106' we detect if the pointer is a stylus when it has a device tool
     event.device_tool().is_some()
+    // could be that we don't have a device tool for the pen ?
+    // if so there won't be pressure
+    // but not doing so will sigsev
 }
 
 fn retrieve_pointer_elements(
@@ -355,6 +360,8 @@ fn retrieve_pointer_elements(
             .unwrap()
     };
 
+    // Idea: check whether or not we lose events because of lag making the last event type ?
+    // Kinda unlikely but worth checking for
     if event.event_type() == gdk::EventType::MotionNotify
         && backlog_policy != BacklogPolicy::Disable
     {
@@ -366,11 +373,13 @@ fn retrieve_pointer_elements(
             if !(available_axes.contains(gdk::AxisFlags::X)
                 && available_axes.contains(gdk::AxisFlags::Y))
             {
+                println!("HISTORY: X/Y informmation missing, ignoring");
                 continue;
             }
 
             let entry_delta = Duration::from_millis(event_time.saturating_sub(entry.time()) as u64);
             let Some(entry_time) = now.checked_sub(entry_delta) else {
+                println!("HISTORY: incoherent timing for event, ignoring");
                 continue;
             };
 
@@ -379,6 +388,10 @@ fn retrieve_pointer_elements(
                 //
                 // If the backlog input rate is higher than the limit, filter it out
                 if entry_delta.saturating_sub(prev_delta) < delta_limit {
+                    println!(
+                        "event removed before of backlog policy {:?}",
+                        backlog_policy
+                    );
                     continue;
                 }
             }
@@ -390,6 +403,9 @@ fn retrieve_pointer_elements(
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Y)]
             ]);
             let pressure = if is_stylus {
+                // so it seems to work well now with no issue
+                // but a mouse will return 0 ..
+                // !! can also fail on the other option !!
                 axes[crate::utils::axis_use_idx(gdk::AxisUse::Pressure)]
             } else {
                 Element::PRESSURE_DEFAULT
@@ -399,12 +415,47 @@ fn retrieve_pointer_elements(
         }
 
         elements.extend(entries.into_iter().rev());
+
+        println!(
+            "HISTORY: size of the history before filtering {:?} and after {:?}",
+            event.history().len().add(1), // +1 because of the end element
+            elements.len() + 1            // not yet pushed the origin event
+        );
+    } else {
+        println!(
+            "HISTORY: event type {:?}. History is not read in that instance. History size {:?}",
+            event.event_type(),
+            event.history().len(),
+        );
+
+        // iterate over events
+        for entry in event.history().into_iter().rev() {
+            let available_axes = entry.flags();
+            if !(available_axes.contains(gdk::AxisFlags::X)
+                && available_axes.contains(gdk::AxisFlags::Y))
+            {
+                println!("HISTORY: X/Y informmation missing, ignoring");
+                continue;
+            }
+
+            let axes = entry.axes();
+            let event_time = entry.time();
+            let pos = transform_pos(na::vector![
+                axes[crate::utils::axis_use_idx(gdk::AxisUse::X)],
+                axes[crate::utils::axis_use_idx(gdk::AxisUse::Y)]
+            ]);
+            println!(
+                "HISTORY: ignored event in the history at time {:?}, position {:?} ",
+                event_time, pos
+            );
+        }
     }
 
     let pos = event
         .position()
         .map(|(x, y)| transform_pos(na::vector![x, y]))?;
 
+    // on recent gtk this DOES fail
     let pressure = if is_stylus {
         event.axis(gdk::AxisUse::Pressure).unwrap()
     } else {
@@ -446,11 +497,18 @@ pub(crate) fn retrieve_modifier_keys(modifier: gdk::ModifierType) -> HashSet<Mod
 }
 
 fn retrieve_pen_mode(event: &gdk::Event) -> Option<PenMode> {
-    let device_tool = event.device_tool()?;
-    match device_tool.tool_type() {
-        gdk::DeviceToolType::Pen => Some(PenMode::Pen),
-        gdk::DeviceToolType::Eraser => Some(PenMode::Eraser),
-        _ => None,
+    // for the eraser or device to work, we need to know the device_tool
+    let device_tool = event.device_tool(); // no mode if the device_tool can't be retrieved
+    match device_tool {
+        Some(device) => match device.tool_type() {
+            gdk::DeviceToolType::Pen => Some(PenMode::Pen),
+            gdk::DeviceToolType::Eraser => Some(PenMode::Eraser),
+            _ => None,
+        },
+        None => {
+            trace!("no device tool found here");
+            None
+        }
     }
 }
 

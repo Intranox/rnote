@@ -209,6 +209,14 @@ impl PenHolder {
         //
         // This is also needed because pens might have claimed/requested an animation frame.
         widget_flags.redraw = true;
+        // this can be expensive
+        // so probably the actual pen handling path is quick enough
+        // but the async redraw makes it hang
+        // --> make it false for now
+        // actually needed for penholder draws
+        // A compromise could be to separate in the redraw the actual part we want to redraw and the
+        // rest ?
+        // issue : the partial rendering phase (already done) scales with the nof strokes ?
 
         (event_result.propagate, widget_flags)
     }
