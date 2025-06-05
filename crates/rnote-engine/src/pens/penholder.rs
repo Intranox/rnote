@@ -460,7 +460,7 @@ impl PenHolder {
             .current_style_w_override(&engine_view.config.pens_config);
 
         self.backlog_policy = match current_style {
-            PenStyle::Brush => BacklogPolicy::Limit(Duration::from_millis(4)),
+            PenStyle::Brush => BacklogPolicy::Disable,
             PenStyle::Shaper => BacklogPolicy::Limit(Duration::from_millis(8)),
             PenStyle::Typewriter => BacklogPolicy::Limit(Duration::from_millis(33)),
             PenStyle::Eraser => BacklogPolicy::Limit(Duration::from_millis(33)),
