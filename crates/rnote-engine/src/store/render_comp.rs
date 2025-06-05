@@ -244,23 +244,20 @@ impl StrokeStore {
         image_scale: f64,
     ) {
         let t0 = Instant::now();
-        let keys = self.render_components.keys().cloned().collect::<Vec<StrokeKey>>();
+        let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
         println!("render_component completed in {:.2?}", t0.elapsed());
     
         let t1 = Instant::now();
     
-        // Estendi il viewport una sola volta
         let viewport_extended =
             viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
     
-        // Fase 1: raccogli dati clonati e leggeri per il processing parallelo
         let tasks: Vec<_> = keys
             .into_iter()
             .filter_map(|key| {
-                let stroke = self.stroke_components.get(&key)?.clone();
-                let render_comp = self.render_components.get_mut(&key)?;
+                let stroke = self.stroke_components.get(key)?.clone();
+                let render_comp = self.render_components.get_mut(key)?;
     
-                // Skip se non visibile
                 if !viewport_extended.intersects(&stroke.bounds()) {
                     #[cfg(feature = "ui")]
                     {
@@ -295,7 +292,6 @@ impl StrokeStore {
             })
             .collect();
     
-        // Fase 2: genera immagini in parallelo su thread separati
         for (key, stroke) in tasks {
             let tasks_tx = tasks_tx.clone();
             let viewport_extended = viewport_extended.clone();
@@ -320,6 +316,7 @@ impl StrokeStore {
     
         println!("for keys completed in {:.2?}", t1.elapsed());
     }
+    
     
 
     /// Clear all rendering for all strokes.
