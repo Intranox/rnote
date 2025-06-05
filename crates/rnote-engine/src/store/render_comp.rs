@@ -8,7 +8,7 @@ use p2d::bounding_volume::{Aabb, BoundingVolume};
 use rnote_compose::ext::AabbExt;
 use rnote_compose::shapes::Shapeable;
 use tracing::error;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// The tolerance where check between scale-factors are considered "equal".
 pub(crate) const RENDER_IMAGE_SCALE_TOLERANCE: f64 = 0.01;
@@ -243,31 +243,46 @@ impl StrokeStore {
         viewport: Aabb,
         image_scale: f64,
     ) {
-        use std::time::Instant;
-    
         let t0 = Instant::now();
-        let keys: Vec<StrokeKey> = self.render_components.keys().collect();
-        println!("render_component completed in {:.2?}", t0.elapsed());
-    
+        let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
+        println!(
+            "render_component completed in {:.2?}",
+            t0.elapsed()
+        );
+
         let t1 = Instant::now();
-    
-        // Clone strokes fuori dal ciclo per accesso condiviso nei thread
-        let t2 = Instant::now();
-        let strokes = self.stroke_components.clone();
-        println!("stroke_components clone completed in {:.2?}", t2.elapsed());
-    
+        let mut total_t2 = Duration::ZERO;
+        let mut total_t3 = Duration::ZERO;
+        let mut total_t4 = Duration::ZERO;
+        let mut total_t5 = Duration::ZERO;
+        let mut total_t6 = Duration::ZERO;
+        let mut cycle_count = 0;
         for key in keys {
-            // Otteniamo solo render_component mutabilmente
-            if let Some(render_comp) = self.render_components.get_mut(key) {
-                let stroke_bounds = strokes.get(key).map(|s| s.bounds());
-    
-                // Se lo stroke non esiste, salta
-                let Some(stroke_bounds) = stroke_bounds else { continue };
-    
+            if let (Some(stroke), Some(render_comp)) = (
+                self.stroke_components.get(key),
+                self.render_components.get_mut(key),
+            ) {
+                cycle_count += 1;
+        
+                let t2 = Instant::now();
+                let tasks_tx = tasks_tx.clone();
+                let elapsed_t2 = t2.elapsed();
+                total_t2 += elapsed_t2;
+                //println!("task_tx completed in {:.2?}", elapsed_t2);
+        
+                let t3 = Instant::now();
+                let stroke_bounds = stroke.bounds();
+                let elapsed_t3 = t3.elapsed();
+                total_t3 += elapsed_t3;
+                //println!("stroke_bounds completed in {:.2?}", elapsed_t3);
+        
+                let t4 = Instant::now();
                 let viewport_extended =
                     viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
-    
-                // Se lo stroke è fuori viewport, svuota immagini/rendernodes
+                let elapsed_t4 = t4.elapsed();
+                total_t4 += elapsed_t4;
+                //println!("viewport_extend completed in {:.2?}", elapsed_t4);
+        
                 if !viewport_extended.intersects(&stroke_bounds) {
                     #[cfg(feature = "ui")]
                     {
@@ -277,8 +292,7 @@ impl StrokeStore {
                     render_comp.state = RenderCompState::Dirty;
                     continue;
                 }
-    
-                // Skip se non forzato e il render è già completo o in corso
+        
                 if !force_regenerate {
                     match render_comp.state {
                         RenderCompState::Complete | RenderCompState::BusyRenderingInTask => {
@@ -286,54 +300,63 @@ impl StrokeStore {
                         }
                         RenderCompState::ForViewport(old_viewport) => {
                             const VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD: f64 = 0.7;
-    
-                            let rerender_margin = viewport.extents()
-                                * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
-                                * VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD;
-    
-                            if old_viewport.contains(&viewport.extend_by(rerender_margin)) {
+        
+                            if old_viewport.contains(
+                                &(viewport.extend_by(
+                                    viewport.extents()
+                                        * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
+                                        * VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD,
+                                )),
+                            ) {
                                 continue;
                             }
                         }
                         RenderCompState::Dirty => {}
                     }
                 }
-    
-                // Imposta lo stato come in rendering
+        
+                let t5 = Instant::now();
                 render_comp.state = RenderCompState::BusyRenderingInTask;
-    
-                let tasks_tx = tasks_tx.clone();
-                let stroke_opt = strokes.get(key).cloned(); // Cloniamo dentro il thread
-                let viewport_extended = viewport_extended.clone();
-    
-                // Spawna il rendering in thread separato
-                rayon::spawn(move || {
-                    if let Some(stroke) = stroke_opt {
-                        match stroke.gen_images(viewport_extended, image_scale) {
-                            Ok(images) => {
-                                tasks_tx.send(EngineTask::UpdateStrokeWithImages {
-                                    key,
-                                    images,
-                                    image_scale,
-                                });
-                            }
-                            Err(e) => {
-                                error!(
-                                    "Generating stroke images failed for key {:?} in viewport {:?}: {:?}",
-                                    key, viewport_extended, e
-                                );
-                            }
+                let stroke = stroke.clone();
+                let elapsed_t5 = t5.elapsed();
+                total_t5 += elapsed_t5;
+                //println!("clone completed in {:.2?}", elapsed_t5);
+        
+                let t6 = Instant::now();
+                rayon::spawn(
+                    move || match stroke.gen_images(viewport_extended, image_scale) {
+                        Ok(images) => {
+                            tasks_tx.send(EngineTask::UpdateStrokeWithImages {
+                                key,
+                                images,
+                                image_scale,
+                            });
                         }
-                    }
-                });
+                        Err(e) => {
+                            error!(
+                                "Generating stroke images failed stroke while regenerating rendering in viewport `{viewport:?}`, stroke key: {key:?}, Err: {e:?}"
+                            );
+                        }
+                    },
+                );
+                let elapsed_t6 = t6.elapsed();
+                total_t6 += elapsed_t6;
+                //println!("spawn completed in {:.2?}", elapsed_t6);
             }
         }
-    
-        println!("for keys completed in {:.2?}", t1.elapsed());
+        
+        println!("\nSummary for {} cycle(s):", cycle_count);
+        println!("Total task_tx time:        {:.2?}", total_t2);
+        println!("Total stroke_bounds time:  {:.2?}", total_t3);
+        println!("Total viewport_extend time:{:.2?}", total_t4);
+        println!("Total clone time:          {:.2?}", total_t5);
+        println!("Total spawn time:          {:.2?}", total_t6);
+        println!();
+        println!(
+            "for keys completed in {:.2?}",
+            t1.elapsed()
+        );
     }
-    
-    
-    
 
     /// Clear all rendering for all strokes.
     pub(crate) fn clear_rendering(&mut self) {
