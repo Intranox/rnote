@@ -5,6 +5,7 @@ use p2d::bounding_volume::Aabb;
 use piet::RenderContext;
 use rnote_compose::color;
 use tracing::error;
+use std::time::Instant;
 
 impl Engine {
     /// Update the background rendering for the current viewport.
@@ -88,6 +89,7 @@ impl Engine {
 
     /// Update the content rendering for the current viewport.
     pub fn update_content_rendering_current_viewport(&mut self) -> WidgetFlags {
+        let start_time = Instant::now();
         let mut widget_flags = WidgetFlags::default();
         self.store.regenerate_rendering_in_viewport_threaded(
             self.engine_tasks_tx(),
@@ -96,6 +98,11 @@ impl Engine {
             self.camera.image_scale(),
         );
         widget_flags.redraw = true;
+        let elapsed = start_time.elapsed();
+        println!(
+            "update_content_rendering_current_viewport completed in {:.2?}",
+            elapsed
+        );
         widget_flags
     }
 
