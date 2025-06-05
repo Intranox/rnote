@@ -243,79 +243,95 @@ impl StrokeStore {
         viewport: Aabb,
         image_scale: f64,
     ) {
+        use std::time::Instant;
+    
         let t0 = Instant::now();
-        let keys = self.render_components.keys().collect::<Vec<StrokeKey>>();
+        let keys: Vec<StrokeKey> = self.render_components.keys().collect();
         println!("render_component completed in {:.2?}", t0.elapsed());
     
         let t1 = Instant::now();
     
-        let viewport_extended =
-            viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
+        // Clone strokes fuori dal ciclo per accesso condiviso nei thread
+        let t2 = Instant::now();
+        let strokes = self.stroke_components.clone();
+        println!("stroke_components clone completed in {:.2?}", t2.elapsed());
     
-        let tasks: Vec<_> = keys
-            .into_iter()
-            .filter_map(|key| {
-                let stroke = self.stroke_components.get(key)?.clone();
-                let render_comp = self.render_components.get_mut(key)?;
+        for key in keys {
+            // Otteniamo solo render_component mutabilmente
+            if let Some(render_comp) = self.render_components.get_mut(key) {
+                let stroke_bounds = strokes.get(key).map(|s| s.bounds());
     
-                if !viewport_extended.intersects(&stroke.bounds()) {
+                // Se lo stroke non esiste, salta
+                let Some(stroke_bounds) = stroke_bounds else { continue };
+    
+                let viewport_extended =
+                    viewport.extend_by(viewport.extents() * render::VIEWPORT_EXTENTS_MARGIN_FACTOR);
+    
+                // Se lo stroke è fuori viewport, svuota immagini/rendernodes
+                if !viewport_extended.intersects(&stroke_bounds) {
                     #[cfg(feature = "ui")]
                     {
                         render_comp.rendernodes = vec![];
                     }
                     render_comp.images = vec![];
                     render_comp.state = RenderCompState::Dirty;
-                    return None;
+                    continue;
                 }
     
+                // Skip se non forzato e il render è già completo o in corso
                 if !force_regenerate {
                     match render_comp.state {
-                        RenderCompState::Complete | RenderCompState::BusyRenderingInTask => return None,
+                        RenderCompState::Complete | RenderCompState::BusyRenderingInTask => {
+                            continue;
+                        }
                         RenderCompState::ForViewport(old_viewport) => {
-                            const RERENDER_THRESHOLD: f64 = 0.7;
-                            let threshold_viewport = viewport.extend_by(
-                                viewport.extents()
-                                    * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
-                                    * RERENDER_THRESHOLD,
-                            );
-                            if old_viewport.contains(&threshold_viewport) {
-                                return None;
+                            const VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD: f64 = 0.7;
+    
+                            let rerender_margin = viewport.extents()
+                                * render::VIEWPORT_EXTENTS_MARGIN_FACTOR
+                                * VIEWPORT_EXTENTS_MARGIN_RERENDER_THRESHOLD;
+    
+                            if old_viewport.contains(&viewport.extend_by(rerender_margin)) {
+                                continue;
                             }
                         }
                         RenderCompState::Dirty => {}
                     }
                 }
     
+                // Imposta lo stato come in rendering
                 render_comp.state = RenderCompState::BusyRenderingInTask;
     
-                Some((key, stroke))
-            })
-            .collect();
+                let tasks_tx = tasks_tx.clone();
+                let stroke_opt = strokes.get(key).cloned(); // Cloniamo dentro il thread
+                let viewport_extended = viewport_extended.clone();
     
-        for (key, stroke) in tasks {
-            let tasks_tx = tasks_tx.clone();
-            let viewport_extended = viewport_extended.clone();
-            rayon::spawn(move || {
-                match stroke.gen_images(viewport_extended, image_scale) {
-                    Ok(images) => {
-                        tasks_tx.send(EngineTask::UpdateStrokeWithImages {
-                            key,
-                            images,
-                            image_scale,
-                        });
+                // Spawna il rendering in thread separato
+                rayon::spawn(move || {
+                    if let Some(stroke) = stroke_opt {
+                        match stroke.gen_images(viewport_extended, image_scale) {
+                            Ok(images) => {
+                                tasks_tx.send(EngineTask::UpdateStrokeWithImages {
+                                    key,
+                                    images,
+                                    image_scale,
+                                });
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Generating stroke images failed for key {:?} in viewport {:?}: {:?}",
+                                    key, viewport_extended, e
+                                );
+                            }
+                        }
                     }
-                    Err(e) => {
-                        error!(
-                            "Generating stroke images failed in regenerate_rendering_in_viewport_threaded. Key: {:?}, Err: {:?}",
-                            key, e
-                        );
-                    }
-                }
-            });
+                });
+            }
         }
     
         println!("for keys completed in {:.2?}", t1.elapsed());
     }
+    
     
     
 
