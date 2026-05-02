@@ -1,41 +1,53 @@
-name: Flatpak ARM64 (QEMU no container)
+name: Flatpak ARM64 (QEMU)
 
 on:
   workflow_dispatch:
 
 jobs:
-  flatpak:
+  build:
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 🔧 Abilita emulazione ARM
       - name: Enable QEMU
         uses: docker/setup-qemu-action@v3
 
+      # 🔧 Installa Flatpak e builder
       - name: Install Flatpak
         run: |
           sudo apt update
           sudo apt install -y flatpak flatpak-builder
 
+      # 🔧 Aggiungi Flathub (USER mode!)
       - name: Add Flathub
         run: |
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Build Flatpak ARM64
+      # 🔧 Build Flatpak ARM64
+      - name: Build Flatpak
         run: |
           flatpak-builder \
+            --user \
             --arch=aarch64 \
             --install-deps-from=flathub \
             --force-clean \
             build-dir \
             build-aux/com.github.flxzt.rnote.Devel.yaml
 
+      # 🔧 Crea repo locale Flatpak
+      - name: Create repo
+        run: |
+          flatpak build-export --arch=aarch64 repo build-dir
+
+      # 📦 Crea bundle installabile
       - name: Build bundle
         run: |
           flatpak build-bundle repo rnote-arm64.flatpak com.github.flxzt.rnote.Devel
 
+      # 📤 Upload artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
