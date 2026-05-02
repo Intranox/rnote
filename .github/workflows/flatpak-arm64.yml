@@ -1,4 +1,4 @@
-name: Flatpak ARM64 (QEMU)
+name: Flatpak ARM64 (QEMU no container)
 
 on:
   workflow_dispatch:
@@ -7,10 +7,6 @@ jobs:
   flatpak:
     runs-on: ubuntu-24.04
 
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
-      options: --privileged
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,13 +14,27 @@ jobs:
       - name: Enable QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Build Flatpak (ARM64)
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
-          arch: aarch64
-          build-bundle: true
-          bundle: rnote-arm64.flatpak
+      - name: Install Flatpak
+        run: |
+          sudo apt update
+          sudo apt install -y flatpak flatpak-builder
+
+      - name: Add Flathub
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak ARM64
+        run: |
+          flatpak-builder \
+            --arch=aarch64 \
+            --install-deps-from=flathub \
+            --force-clean \
+            build-dir \
+            build-aux/com.github.flxzt.rnote.Devel.yaml
+
+      - name: Build bundle
+        run: |
+          flatpak build-bundle repo rnote-arm64.flatpak com.github.flxzt.rnote.Devel
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
