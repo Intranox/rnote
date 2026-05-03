@@ -1,12 +1,9 @@
 name: Flatpak ARM64 (QEMU Safe)
-
 on:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,13 +49,15 @@ jobs:
       # 🔍 DEBUG (serve a evitare errori silenziosi)
       - name: Check installed refs
         run: |
-          flatpak list --user
+          flatpak list --user --columns=application,arch,branch
+          ostree refs --repo=${HOME}/.local/share/flatpak/repo
 
-      # 📦 CREAZIONE BUNDLE (questa è la parte FIXATA)
+      # 📦 CREAZIONE BUNDLE (fix: aggiunto --arch=aarch64)
       - name: Create bundle
         run: |
           flatpak build-bundle \
-            ~/.local/share/flatpak/repo \
+            --arch=aarch64 \
+            ${HOME}/.local/share/flatpak/repo \
             rnote-arm64.flatpak \
             com.github.flxzt.rnote.Devel \
             master
