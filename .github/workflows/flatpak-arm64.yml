@@ -1,30 +1,71 @@
-name: Flatpak Beta arm64
+name: Flatpak ARM64 (QEMU Safe)
 
 on:
   workflow_dispatch:
 
 jobs:
-  flatpak:
+  build:
     runs-on: ubuntu-24.04
-
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
-      options: --privileged
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build flatpak (ARM64)
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      # 🧠 Cache build (fondamentale per non perdere 3 ore)
+      - name: Cache Flatpak build
+        uses: actions/cache@v4
         with:
-          manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
-          arch: aarch64
-          build-bundle: true
-          bundle: rnote-beta-aarch64.flatpak
+          path: |
+            .flatpak-builder
+            build-dir
+          key: flatpak-${{ github.sha }}
+          restore-keys: |
+            flatpak-
 
+      # 🔧 QEMU per ARM
+      - name: Enable QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 🔧 Flatpak + builder
+      - name: Install Flatpak
+        run: |
+          sudo apt update
+          sudo apt install -y flatpak flatpak-builder
+
+      # 🔧 Flathub in modalità utente
+      - name: Add Flathub
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      # 🔧 BUILD + INSTALL (così evitiamo repo rotti)
+      - name: Build & Install Flatpak (ARM64)
+        run: |
+          flatpak-builder \
+            --user \
+            --arch=aarch64 \
+            --install \
+            --ccache \
+            --force-clean \
+            build-dir \
+            build-aux/com.github.flxzt.rnote.Devel.yaml
+
+      # 🔍 DEBUG (serve a evitare errori silenziosi)
+      - name: Check installed refs
+        run: |
+          flatpak list --user
+
+      # 📦 CREAZIONE BUNDLE (questa è la parte FIXATA)
+      - name: Create bundle
+        run: |
+          flatpak build-bundle \
+            ~/.local/share/flatpak/repo \
+            rnote-arm64.flatpak \
+            com.github.flxzt.rnote.Devel \
+            master
+
+      # 📤 Upload finale
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rnote-flatpak-aarch64
-          path: rnote-beta-aarch64.flatpak
+          name: rnote-arm64
+          path: rnote-arm64.flatpak
