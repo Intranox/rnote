@@ -15,13 +15,15 @@ jobs:
           path: |
             .flatpak-builder
             build-dir
-          key: flatpak-${{ github.sha }}
+          key: flatpak-arm64-${{ github.sha }}
           restore-keys: |
-            flatpak-
+            flatpak-arm64-
 
       # 🔧 QEMU per ARM
       - name: Enable QEMU
         uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       # 🔧 Flatpak + builder
       - name: Install Flatpak
@@ -34,30 +36,41 @@ jobs:
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      # 🔧 BUILD + INSTALL (così evitiamo repo rotti)
-      - name: Build & Install Flatpak (ARM64)
+      # 🔧 Installa runtime + SDK per aarch64 (richiesti dalla manifest)
+      - name: Install runtimes for aarch64
+        run: |
+          flatpak install --user --arch=aarch64 --noninteractive flathub \
+            org.gnome.Platform//48 \
+            org.gnome.Sdk//48 \
+            org.freedesktop.Sdk.Extension.rust-stable//24.08 \
+            org.freedesktop.Sdk.Extension.llvm19//24.08
+
+      # 🔧 BUILD con --repo (NON --install, così build-bundle ha un repo affidabile)
+      - name: Build Flatpak (ARM64)
         run: |
           flatpak-builder \
             --user \
             --arch=aarch64 \
-            --install \
+            --repo=local-repo \
             --ccache \
             --force-clean \
             build-dir \
             build-aux/com.github.flxzt.rnote.Devel.yaml
 
-      # 🔍 DEBUG (serve a evitare errori silenziosi)
-      - name: Check installed refs
+      # 🔍 DEBUG: verifica che la ref aarch64 esista nel repo
+      - name: Debug OSTree refs
         run: |
+          echo "=== OSTree refs in local-repo ==="
+          ostree refs --repo=local-repo
+          echo "=== Flatpak list utente ==="
           flatpak list --user --columns=application,arch,branch
-          ostree refs --repo=${HOME}/.local/share/flatpak/repo
 
-      # 📦 CREAZIONE BUNDLE (fix: aggiunto --arch=aarch64)
+      # 📦 CREAZIONE BUNDLE da local-repo con arch esplicita
       - name: Create bundle
         run: |
           flatpak build-bundle \
             --arch=aarch64 \
-            ${HOME}/.local/share/flatpak/repo \
+            local-repo \
             rnote-arm64.flatpak \
             com.github.flxzt.rnote.Devel \
             master
