@@ -1,53 +1,81 @@
-name: Flatpak ARM64 (QEMU)
-
+name: Flatpak ARM64 (QEMU Safe)
 on:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔧 Abilita emulazione ARM
+      # 🧠 Cache build (fondamentale per non perdere 3 ore)
+      - name: Cache Flatpak build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .flatpak-builder
+            build-dir
+          key: flatpak-arm64-${{ github.sha }}
+          restore-keys: |
+            flatpak-arm64-
+
+      # 🔧 QEMU per ARM
       - name: Enable QEMU
         uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      # 🔧 Installa Flatpak e builder
+      # 🔧 Flatpak + builder
       - name: Install Flatpak
         run: |
           sudo apt update
           sudo apt install -y flatpak flatpak-builder
 
-      # 🔧 Aggiungi Flathub (USER mode!)
+      # 🔧 Flathub in modalità utente
       - name: Add Flathub
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      # 🔧 Build Flatpak ARM64
-      - name: Build Flatpak
+      # 🔧 Installa runtime + SDK per aarch64 (richiesti dalla manifest)
+      - name: Install runtimes for aarch64
+        run: |
+          flatpak install --user --arch=aarch64 --noninteractive flathub \
+            org.gnome.Platform//48 \
+            org.gnome.Sdk//48 \
+            org.freedesktop.Sdk.Extension.rust-stable//24.08 \
+            org.freedesktop.Sdk.Extension.llvm19//24.08
+
+      # 🔧 BUILD con --repo (NON --install, così build-bundle ha un repo affidabile)
+      - name: Build Flatpak (ARM64)
         run: |
           flatpak-builder \
             --user \
             --arch=aarch64 \
-            --install-deps-from=flathub \
+            --repo=local-repo \
+            --ccache \
             --force-clean \
             build-dir \
             build-aux/com.github.flxzt.rnote.Devel.yaml
 
-      # 🔧 Crea repo locale Flatpak
-      - name: Create repo
+      # 🔍 DEBUG: verifica che la ref aarch64 esista nel repo
+      - name: Debug OSTree refs
         run: |
-          flatpak build-export --arch=aarch64 repo build-dir
+          echo "=== OSTree refs in local-repo ==="
+          ostree refs --repo=local-repo
+          echo "=== Flatpak list utente ==="
+          flatpak list --user --columns=application,arch,branch
 
-      # 📦 Crea bundle installabile
-      - name: Build bundle
+      # 📦 CREAZIONE BUNDLE da local-repo con arch esplicita
+      - name: Create bundle
         run: |
-          flatpak build-bundle repo rnote-arm64.flatpak com.github.flxzt.rnote.Devel
+          flatpak build-bundle \
+            --arch=aarch64 \
+            local-repo \
+            rnote-arm64.flatpak \
+            com.github.flxzt.rnote.Devel \
+            master
 
-      # 📤 Upload artifact
+      # 📤 Upload finale
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
