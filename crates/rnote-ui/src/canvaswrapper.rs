@@ -60,7 +60,7 @@ mod imp {
         #[template_child]
         pub(crate) page_indicator_label: TemplateChild<Label>,
 
-        pub(crate) page_indicator_timeout: RefCell<Option<glib::SourceId>>,
+        pub(crate) page_indicator_cancel: RefCell<Option<Rc<Cell<bool>>>>,
     }
 
     impl Default for RnCanvasWrapper {
@@ -160,7 +160,7 @@ mod imp {
                 canvas_overlay: TemplateChild::<Overlay>::default(),
                 page_indicator_revealer: TemplateChild::<Revealer>::default(),
                 page_indicator_label: TemplateChild::<Label>::default(),
-                page_indicator_timeout: RefCell::new(None),
+                page_indicator_cancel: RefCell::new(None),
             }
         }
     }
@@ -887,21 +887,29 @@ mod imp {
                 .set_label(&format!("{current} / {total}"));
             self.page_indicator_revealer.set_reveal_child(true);
 
-            // Cancel any pending hide timeout and schedule a new one
-            if let Some(id) = self.page_indicator_timeout.borrow_mut().take() {
-                id.remove();
+            // Invalidate any previous pending timer by flipping its cancel flag,
+            // then arm a fresh one. We never call SourceId::remove() because
+            // timeout_add_local_once auto-removes itself when it fires, making
+            // the SourceId invalid and causing a panic on remove().
+            if let Some(prev) = self.page_indicator_cancel.borrow().as_ref() {
+                prev.set(true);
             }
 
+            let cancel = Rc::new(Cell::new(false));
+            *self.page_indicator_cancel.borrow_mut() = Some(cancel.clone());
+
             let revealer = self.page_indicator_revealer.downgrade();
-            let source_id = glib::source::timeout_add_local_once(
+            glib::source::timeout_add_local_once(
                 std::time::Duration::from_millis(1500),
                 move || {
+                    if cancel.get() {
+                        return;
+                    }
                     if let Some(r) = revealer.upgrade() {
                         r.set_reveal_child(false);
                     }
                 },
             );
-            *self.page_indicator_timeout.borrow_mut() = Some(source_id);
         }
     }
 }
