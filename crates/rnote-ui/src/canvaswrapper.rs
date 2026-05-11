@@ -3,8 +3,8 @@ use crate::{RnAppWindow, RnCanvas, RnContextMenu, canvas::reject_pointer_input};
 use gtk4::{
     CompositeTemplate, CornerType, EventControllerMotion, EventControllerScroll,
     EventControllerScrollFlags, EventSequenceState, GestureClick, GestureDrag, GestureLongPress,
-    GestureZoom, PropagationPhase, ScrolledWindow, Widget, gdk, glib, glib::clone, graphene,
-    prelude::*, subclass::prelude::*,
+    GestureZoom, Label, Overlay, PropagationPhase, Revealer, ScrolledWindow, Widget, gdk, glib,
+    glib::clone, graphene, prelude::*, subclass::prelude::*,
 };
 use once_cell::sync::Lazy;
 use rnote_compose::penevent::ShortcutKey;
@@ -53,6 +53,14 @@ mod imp {
         pub(crate) canvas: TemplateChild<RnCanvas>,
         #[template_child]
         pub(crate) contextmenu: TemplateChild<RnContextMenu>,
+        #[template_child]
+        pub(crate) canvas_overlay: TemplateChild<Overlay>,
+        #[template_child]
+        pub(crate) page_indicator_revealer: TemplateChild<Revealer>,
+        #[template_child]
+        pub(crate) page_indicator_label: TemplateChild<Label>,
+
+        pub(crate) page_indicator_timeout: RefCell<Option<glib::SourceId>>,
     }
 
     impl Default for RnCanvasWrapper {
@@ -149,6 +157,10 @@ mod imp {
                 scroller: TemplateChild::<ScrolledWindow>::default(),
                 canvas: TemplateChild::<RnCanvas>::default(),
                 contextmenu: TemplateChild::<RnContextMenu>::default(),
+                canvas_overlay: TemplateChild::<Overlay>::default(),
+                page_indicator_revealer: TemplateChild::<Revealer>::default(),
+                page_indicator_label: TemplateChild::<Label>::default(),
+                page_indicator_timeout: RefCell::new(None),
             }
         }
     }
@@ -200,6 +212,7 @@ mod imp {
                 .group_with(&self.canvas_zoom_gesture);
 
             self.setup_input();
+            self.setup_page_indicator();
 
             let canvas_touch_drawing_handler = self.canvas.connect_notify_local(
                 Some("touch-drawing"),
@@ -803,6 +816,92 @@ mod imp {
                     }
                 ));
             }
+        }
+
+        fn setup_page_indicator(&self) {
+            let obj = self.obj();
+
+            // Connect to vertical adjustment to detect vertical scroll
+            self.scroller.vadjustment().connect_value_changed(clone!(
+                #[weak(rename_to = canvaswrapper)]
+                obj,
+                move |_| {
+                    canvaswrapper.imp().update_page_indicator();
+                }
+            ));
+
+            // Connect to horizontal adjustment to detect horizontal scroll
+            self.scroller.hadjustment().connect_value_changed(clone!(
+                #[weak(rename_to = canvaswrapper)]
+                obj,
+                move |_| {
+                    canvaswrapper.imp().update_page_indicator();
+                }
+            ));
+        }
+
+        /// Computes the current page / total pages and shows the floating indicator.
+        /// Only active for layouts that have discrete pages (FixedSize and ContinuousVertical).
+        fn update_page_indicator(&self) {
+            use rnote_engine::document::Layout;
+
+            let canvas = self.canvas.get();
+            let engine = canvas.engine_ref();
+            let layout = engine.document.config.layout;
+
+            let result = match layout {
+                Layout::FixedSize | Layout::ContinuousVertical => {
+                    let zoom = engine.camera.total_zoom();
+                    let format_height = engine.document.config.format.height();
+                    let doc_height = engine.document.height;
+                    let camera_offset = engine.camera.offset();
+                    let camera_size = engine.camera.size();
+
+                    if format_height <= 0.0 {
+                        return;
+                    }
+
+                    let total = (doc_height / format_height).ceil() as u32;
+                    if total <= 1 {
+                        self.page_indicator_revealer.set_reveal_child(false);
+                        return;
+                    }
+
+                    // Use centre of the viewport in document space to determine the current page
+                    let doc_y_center =
+                        camera_offset.y / zoom + camera_size.y / (2.0 * zoom);
+                    let current = ((doc_y_center / format_height).floor() as u32 + 1)
+                        .clamp(1, total);
+
+                    Some((current, total))
+                }
+                _ => None,
+            };
+
+            let Some((current, total)) = result else {
+                self.page_indicator_revealer.set_reveal_child(false);
+                return;
+            };
+
+            self.page_indicator_label
+                .set_label(&format!("{current} / {total}"));
+            self.page_indicator_revealer.set_reveal_child(true);
+
+            // Cancel any pending hide timeout and schedule a new one
+            if let Some(id) = self.page_indicator_timeout.borrow_mut().take() {
+                id.remove();
+            }
+
+            let revealer = self.page_indicator_revealer.downgrade();
+            let source_id = glib::source::timeout_add_local_once(
+                std::time::Duration::from_millis(1500),
+                move || {
+                    if let Some(r) = revealer.upgrade() {
+                        r.set_reveal_child(false);
+                    }
+                },
+            );
+            *self.page_indicator_timeout.borrow_mut() = Some(source_id);
         }
     }
 }
