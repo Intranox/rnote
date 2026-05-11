@@ -1,9 +1,10 @@
 // Imports
 use crate::RnAppWindow;
 use gtk4::{
-    Button, CompositeTemplate, MenuButton, Popover, ToggleButton, Widget, glib, glib::clone,
-    prelude::*, subclass::prelude::*,
+    Box as GtkBox, Button, CompositeTemplate, MenuButton, Popover, SpinButton, ToggleButton,
+    Widget, glib, glib::clone, prelude::*, subclass::prelude::*,
 };
+use rnote_engine::document::Layout;
 use rnote_engine::pens::pensconfig::toolsconfig::ToolStyle;
 
 mod imp {
@@ -31,6 +32,13 @@ mod imp {
         #[template_child]
         pub(crate) verticalspace_limit_movement_horizontal_bordersrow:
             TemplateChild<adw::SwitchRow>,
+
+        #[template_child]
+        pub(crate) goto_page_box: TemplateChild<GtkBox>,
+        #[template_child]
+        pub(crate) goto_page_spinbutton: TemplateChild<SpinButton>,
+        #[template_child]
+        pub(crate) goto_page_button: TemplateChild<Button>,
     }
 
     #[glib::object_subclass]
@@ -253,6 +261,60 @@ impl RnToolsPage {
                         .limit_movement_horizontal_borders = row.is_active();
                 }
             ));
+
+        // Go-to-page: triggered by button click or pressing Enter in the spin button.
+        // Only active for FixedSize / ContinuousVertical layouts.
+        let do_goto_page = clone!(
+            #[weak(rename_to = toolspage)]
+            self,
+            #[weak]
+            appwindow,
+            move || {
+                let Some(canvas) = appwindow.active_tab_canvas() else {
+                    return;
+                };
+                let engine = canvas.engine_ref();
+                let layout = engine.document.config.layout;
+
+                if !matches!(layout, Layout::FixedSize | Layout::ContinuousVertical) {
+                    return;
+                }
+
+                let target_page = toolspage.imp().goto_page_spinbutton.value() as u32;
+                let zoom = engine.camera.zoom();
+                let format_height = engine.document.config.format.height();
+                let format_width = engine.document.config.format.width();
+                let shadow_width = rnote_engine::Document::SHADOW_WIDTH;
+
+                let offset_y = (target_page.saturating_sub(1)) as f64 * format_height * zoom
+                    - shadow_width * zoom;
+
+                let parent_width = canvas.parent().map(|p| p.width() as f64).unwrap_or(0.0);
+                let offset_x = if format_width * zoom <= parent_width {
+                    (format_width * 0.5 * zoom) - parent_width * 0.5
+                } else {
+                    -shadow_width * zoom
+                };
+
+                drop(engine);
+                let widget_flags = canvas
+                    .engine_mut()
+                    .camera_set_offset_expand(na::vector![offset_x, offset_y]);
+                appwindow.handle_widget_flags(widget_flags, &canvas);
+            }
+        );
+
+        imp.goto_page_button.connect_clicked(clone!(
+            #[strong]
+            do_goto_page,
+            move |_| do_goto_page()
+        ));
+
+        imp.goto_page_spinbutton.connect_activate(clone!(
+            #[strong]
+            do_goto_page,
+            move |_| do_goto_page()
+        ));
     }
 
     pub(crate) fn refresh_ui(&self, appwindow: &RnAppWindow) {
@@ -278,5 +340,32 @@ impl RnToolsPage {
                     .verticalspace_tool_config
                     .limit_movement_vertical_borders,
             );
+
+        // Update go-to-page section: visible and ranged only for paged layouts
+        if let Some(canvas) = appwindow.active_tab_canvas() {
+            let engine = canvas.engine_ref();
+            let layout = engine.document.config.layout;
+            let is_paged = matches!(layout, Layout::FixedSize | Layout::ContinuousVertical);
+
+            imp.goto_page_box.set_visible(is_paged);
+
+            if is_paged {
+                let format_height = engine.document.config.format.height();
+                let n_pages = if format_height > 0.0 {
+                    (engine.document.height / format_height).ceil() as f64
+                } else {
+                    1.0
+                }
+                .max(1.0);
+
+                let adj = imp.goto_page_spinbutton.adjustment();
+                adj.set_upper(n_pages);
+                // Clamp current value within new range
+                let current = adj.value().clamp(1.0, n_pages);
+                adj.set_value(current);
+            }
+        } else {
+            imp.goto_page_box.set_visible(false);
+        }
     }
 }
