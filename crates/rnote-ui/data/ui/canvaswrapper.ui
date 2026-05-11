@@ -9,24 +9,54 @@
     <property name="halign">fill</property>
     <property name="valign">fill</property>
     <child>
-      <object class="GtkScrolledWindow" id="scroller">
-        <style>
-          <class name="canvas_scroller" />
-        </style>
-        <property name="propagate-natural-width">false</property>
-        <property name="propagate-natural-height">false</property>
-        <property name="halign">fill</property>
-        <property name="valign">fill</property>
-        <property name="vexpand">true</property>
+      <object class="GtkOverlay" id="canvas_overlay">
         <property name="hexpand">true</property>
-        <property name="window-placement">bottom-right</property>
-        <property name="overlay-scrolling">true</property>
+        <property name="vexpand">true</property>
         <child>
-          <object class="RnCanvas" id="canvas">
-            <property name="halign">center</property>
-            <property name="valign">start</property>
+          <object class="GtkScrolledWindow" id="scroller">
+            <style>
+              <class name="canvas_scroller" />
+            </style>
+            <property name="propagate-natural-width">false</property>
+            <property name="propagate-natural-height">false</property>
+            <property name="halign">fill</property>
+            <property name="valign">fill</property>
+            <property name="vexpand">true</property>
+            <property name="hexpand">true</property>
+            <property name="window-placement">bottom-right</property>
+            <property name="overlay-scrolling">true</property>
             <child>
-              <object class="RnContextMenu" id="contextmenu"></object>
+              <object class="RnCanvas" id="canvas">
+                <property name="halign">center</property>
+                <property name="valign">start</property>
+                <child>
+                  <object class="RnContextMenu" id="contextmenu"></object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child type="overlay">
+          <object class="GtkRevealer" id="page_indicator_revealer">
+            <property name="halign">end</property>
+            <property name="valign">end</property>
+            <property name="margin-end">14</property>
+            <property name="margin-bottom">28</property>
+            <property name="transition-type">crossfade</property>
+            <property name="transition-duration">200</property>
+            <property name="reveal-child">false</property>
+            <child>
+              <object class="GtkLabel" id="page_indicator_label">
+                <property name="label">1 / 1</property>
+                <property name="margin-top">4</property>
+                <property name="margin-bottom">4</property>
+                <property name="margin-start">8</property>
+                <property name="margin-end">8</property>
+                <style>
+                  <class name="osd" />
+                  <class name="page-indicator" />
+                </style>
+              </object>
             </child>
           </object>
         </child>
