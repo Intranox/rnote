@@ -8,7 +8,7 @@
     </property>
     <property name="hexpand">false</property>
     <property name="vexpand">false</property>
-      <child>
+    <child>
       <object class="GtkBox" id="toolstyle_togglebox">
         <property name="orientation">vertical</property>
         <property name="homogeneous">false</property>
@@ -87,65 +87,20 @@
             </style>
           </object>
         </child>
-      </object>
-    </child>
-
-    <child>
-      <object class="GtkSeparator">
-        <property name="orientation">horizontal</property>
-        <property name="margin-top">4</property>
-        <property name="margin-bottom">4</property>
-      </object>
-    </child>
-    <child>
-      <object class="GtkBox" id="goto_page_box">
-        <property name="orientation">vertical</property>
-        <property name="spacing">4</property>
-        <property name="margin-top">2</property>
-        <property name="margin-start">4</property>
-        <property name="margin-end">4</property>
         <child>
-          <object class="GtkLabel">
-            <property name="label" translatable="yes">Go to Page</property>
-            <property name="halign">start</property>
-            <style>
-              <class name="caption" />
-              <class name="dim-label" />
-            </style>
+          <object class="GtkSeparator" id="goto_page_separator">
+            <property name="orientation">vertical</property>
           </object>
         </child>
         <child>
-          <object class="GtkBox">
-            <property name="orientation">horizontal</property>
-            <property name="spacing">4</property>
-            <child>
-              <object class="GtkAdjustment" id="goto_page_adjustment">
-                <property name="lower">1</property>
-                <property name="upper">1</property>
-                <property name="value">1</property>
-                <property name="step-increment">1</property>
-                <property name="page-increment">5</property>
-              </object>
-              <object class="GtkSpinButton" id="goto_page_spinbutton">
-                <property name="hexpand">true</property>
-                <property name="adjustment">goto_page_adjustment</property>
-                <property name="numeric">true</property>
-                <property name="digits">0</property>
-                <property name="climb-rate">1</property>
-                <property name="snap-to-ticks">true</property>
-                <property name="update-policy">if-valid</property>
-                <property name="tooltip-text" translatable="yes">Page number</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkButton" id="goto_page_button">
-                <property name="icon-name">go-jump-symbolic</property>
-                <property name="tooltip-text" translatable="yes">Go to page</property>
-                <style>
-                  <class name="flat" />
-                </style>
-              </object>
-            </child>
+          <object class="GtkSpinButton" id="goto_page_spinbutton">
+            <property name="tooltip-text" translatable="yes">Go to Page (Enter to jump)</property>
+            <property name="orientation">vertical</property>
+            <property name="numeric">true</property>
+            <property name="digits">0</property>
+            <property name="climb-rate">1</property>
+            <property name="snap-to-ticks">true</property>
+            <property name="update-policy">if-valid</property>
           </object>
         </child>
       </object>
