@@ -55,6 +55,13 @@
                   </object>
                 </child>
                 <child>
+                  <object class="GtkButton" id="page_overview_button">
+                    <property name="icon-name">document-page-setup-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Page Overview</property>
+                    <property name="visible">false</property>
+                  </object>
+                </child>
+                <child>
                   <object class="GtkToggleButton">
                     <property name="icon-name">focus-mode-symbolic</property>
                     <property name="action-name">win.focus-mode</property>
