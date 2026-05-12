@@ -272,7 +272,7 @@ impl RnToolsPage {
             #[weak(rename_to = toolspage)]
             self,
             move |_| {
-                toolspage.imp().jump_to_page(&appwindow);
+                toolspage.jump_to_page(&appwindow);
             }
         ));
     }
