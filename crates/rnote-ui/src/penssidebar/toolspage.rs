@@ -1,8 +1,8 @@
 // Imports
 use crate::RnAppWindow;
 use gtk4::{
-    Box as GtkBox, Button, CompositeTemplate, MenuButton, Popover, SpinButton, ToggleButton,
-    Widget, glib, glib::clone, prelude::*, subclass::prelude::*,
+    Button, CompositeTemplate, MenuButton, Popover, SpinButton, ToggleButton, Widget, glib,
+    glib::clone, prelude::*, subclass::prelude::*,
 };
 use rnote_engine::document::Layout;
 use rnote_engine::pens::pensconfig::toolsconfig::ToolStyle;
@@ -34,11 +34,9 @@ mod imp {
             TemplateChild<adw::SwitchRow>,
 
         #[template_child]
-        pub(crate) goto_page_box: TemplateChild<GtkBox>,
+        pub(crate) goto_page_separator: TemplateChild<gtk4::Separator>,
         #[template_child]
         pub(crate) goto_page_spinbutton: TemplateChild<SpinButton>,
-        #[template_child]
-        pub(crate) goto_page_button: TemplateChild<Button>,
     }
 
     #[glib::object_subclass]
@@ -125,7 +123,6 @@ impl RnToolsPage {
 
     pub(crate) fn init(&self, appwindow: &RnAppWindow) {
         let imp = self.imp();
-        // for now doesn't do anything but for the close button later
         let verticalspace_popover = imp.verticalspace_popover.get();
 
         imp.toolstyle_verticalspace_toggle.connect_toggled(clone!(
@@ -213,7 +210,7 @@ impl RnToolsPage {
         ));
 
         imp.verticalspace_menubutton.connect_active_notify(clone!(
-            #[weak(rename_to=toolspage)]
+            #[weak(rename_to = toolspage)]
             self,
             move |menubutton| {
                 if menubutton.is_active() {
@@ -246,6 +243,7 @@ impl RnToolsPage {
                         .limit_movement_vertical_borders = row.is_active();
                 }
             ));
+
         imp.verticalspace_limit_movement_horizontal_bordersrow
             .get()
             .connect_active_notify(clone!(
@@ -262,59 +260,62 @@ impl RnToolsPage {
                 }
             ));
 
-        // Go-to-page: triggered by button click or pressing Enter in the spin button.
-        // Only active for FixedSize / ContinuousVertical layouts.
-        let do_goto_page = clone!(
-            #[weak(rename_to = toolspage)]
-            self,
-            #[weak]
-            appwindow,
-            move || {
-                let Some(canvas) = appwindow.active_tab_canvas() else {
-                    return;
-                };
-                let engine = canvas.engine_ref();
-                let layout = engine.document.config.layout;
-
-                if !matches!(layout, Layout::FixedSize | Layout::ContinuousVertical) {
-                    return;
-                }
-
-                let target_page = toolspage.imp().goto_page_spinbutton.value() as u32;
-                let zoom = engine.camera.zoom();
-                let format_height = engine.document.config.format.height();
-                let format_width = engine.document.config.format.width();
-                let shadow_width = rnote_engine::Document::SHADOW_WIDTH;
-
-                let offset_y = (target_page.saturating_sub(1)) as f64 * format_height * zoom
-                    - shadow_width * zoom;
-
-                let parent_width = canvas.parent().map(|p| p.width() as f64).unwrap_or(0.0);
-                let offset_x = if format_width * zoom <= parent_width {
-                    (format_width * 0.5 * zoom) - parent_width * 0.5
-                } else {
-                    -shadow_width * zoom
-                };
-
-                drop(engine);
-                let widget_flags = canvas
-                    .engine_mut()
-                    .camera_set_offset_expand(na::vector![offset_x, offset_y]);
-                appwindow.handle_widget_flags(widget_flags, &canvas);
-            }
-        );
-
-        imp.goto_page_button.connect_clicked(clone!(
-            #[strong]
-            do_goto_page,
-            move |_| do_goto_page()
-        ));
+        // Go-to-page spinbutton — same wiring as the font-size spinbutton in typewriterpage.
+        // Range and visibility are set in refresh_ui(); here we only wire the signal.
+        imp.goto_page_spinbutton.set_increments(1.0, 5.0);
+        imp.goto_page_spinbutton.set_range(1.0, 1.0);
+        imp.goto_page_spinbutton.set_value(1.0);
 
         imp.goto_page_spinbutton.connect_activate(clone!(
-            #[strong]
-            do_goto_page,
-            move |_| do_goto_page()
+            #[weak]
+            appwindow,
+            #[weak(rename_to = toolspage)]
+            self,
+            move |_| {
+                toolspage.imp().jump_to_page(&appwindow);
+            }
         ));
+    }
+
+    fn jump_to_page(&self, appwindow: &RnAppWindow) {
+        let Some(canvas) = appwindow.active_tab_canvas() else {
+            return;
+        };
+
+        let target_page = (self.imp().goto_page_spinbutton.value() as u32).max(1);
+
+        let (offset_x, offset_y) = {
+            let engine = canvas.engine_ref();
+
+            if !matches!(
+                engine.document.config.layout,
+                Layout::FixedSize | Layout::ContinuousVertical
+            ) {
+                return;
+            }
+
+            let zoom = engine.camera.zoom();
+            let format_height = engine.document.config.format.height();
+            let format_width = engine.document.config.format.width();
+            let shadow = rnote_engine::Document::SHADOW_WIDTH;
+
+            let y = (target_page.saturating_sub(1)) as f64 * format_height * zoom
+                - shadow * zoom;
+
+            let parent_w = canvas.parent().map(|p| p.width() as f64).unwrap_or(0.0);
+            let x = if format_width * zoom <= parent_w {
+                (format_width * 0.5 * zoom) - parent_w * 0.5
+            } else {
+                -shadow * zoom
+            };
+
+            (x, y)
+        };
+
+        let widget_flags = canvas
+            .engine_mut()
+            .camera_set_offset_expand(na::vector![offset_x, offset_y]);
+        appwindow.handle_widget_flags(widget_flags, &canvas);
     }
 
     pub(crate) fn refresh_ui(&self, appwindow: &RnAppWindow) {
@@ -341,31 +342,32 @@ impl RnToolsPage {
                     .limit_movement_vertical_borders,
             );
 
-        // Update go-to-page section: visible and ranged only for paged layouts
+        // Show/hide goto-page spinbutton depending on layout
         if let Some(canvas) = appwindow.active_tab_canvas() {
             let engine = canvas.engine_ref();
             let layout = engine.document.config.layout;
             let is_paged = matches!(layout, Layout::FixedSize | Layout::ContinuousVertical);
 
-            imp.goto_page_box.set_visible(is_paged);
+            imp.goto_page_separator.set_visible(is_paged);
+            imp.goto_page_spinbutton.set_visible(is_paged);
 
             if is_paged {
                 let format_height = engine.document.config.format.height();
                 let n_pages = if format_height > 0.0 {
-                    (engine.document.height / format_height).ceil() as f64
+                    (engine.document.height / format_height).ceil()
                 } else {
                     1.0
                 }
                 .max(1.0);
 
-                let adj = imp.goto_page_spinbutton.adjustment();
-                adj.set_upper(n_pages);
-                // Clamp current value within new range
-                let current = adj.value().clamp(1.0, n_pages);
-                adj.set_value(current);
+                // Update range, clamping the current value if needed
+                let current = imp.goto_page_spinbutton.value().clamp(1.0, n_pages);
+                imp.goto_page_spinbutton.set_range(1.0, n_pages);
+                imp.goto_page_spinbutton.set_value(current);
             }
         } else {
-            imp.goto_page_box.set_visible(false);
+            imp.goto_page_separator.set_visible(false);
+            imp.goto_page_spinbutton.set_visible(false);
         }
     }
 }
