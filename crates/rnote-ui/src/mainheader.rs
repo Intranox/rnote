@@ -1,8 +1,8 @@
 // Imports
 use crate::{appmenu::RnAppMenu, appwindow::RnAppWindow, canvasmenu::RnCanvasMenu};
 use gtk4::{
-    Box, CompositeTemplate, EventControllerLegacy, Label, ToggleButton, Widget, glib, prelude::*,
-    subclass::prelude::*,
+    Box, Button, CompositeTemplate, EventControllerLegacy, Label, ToggleButton, Widget, glib,
+    prelude::*, subclass::prelude::*,
 };
 
 mod imp {
@@ -29,6 +29,8 @@ mod imp {
         pub(crate) quickactions_box: TemplateChild<Box>,
         #[template_child]
         pub(crate) right_buttons_box: TemplateChild<Box>,
+        #[template_child]
+        pub(crate) page_overview_button: TemplateChild<Button>,
     }
 
     #[glib::object_subclass]
@@ -106,6 +108,10 @@ impl RnMainHeader {
         self.imp().appmenu.get()
     }
 
+    pub(crate) fn page_overview_button(&self) -> Button {
+        self.imp().page_overview_button.get()
+    }
+
     pub(crate) fn init(&self, appwindow: &RnAppWindow) {
         let imp = self.imp();
 
@@ -129,5 +135,14 @@ impl RnMainHeader {
 
         capture_right.connect_event(|_, _| glib::Propagation::Stop);
         imp.right_buttons_box.add_controller(capture_right);
+
+        // Page overview button
+        imp.page_overview_button.connect_clicked(glib::clone!(
+            #[weak]
+            appwindow,
+            move |_| {
+                crate::dialogs::dialog_page_overview(&appwindow);
+            }
+        ));
     }
 }
