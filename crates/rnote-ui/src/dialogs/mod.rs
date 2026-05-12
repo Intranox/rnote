@@ -15,8 +15,8 @@ use gettextrs::{gettext, pgettext};
 #[allow(deprecated)]
 use gtk4::ShortcutsWindow;
 use gtk4::{
-    Builder, Button, CheckButton, ColorDialogButton, FileDialog, Label, MenuButton, StringList,
-    gio, glib, glib::clone,
+    Builder, Button, CheckButton, ColorDialogButton, FileDialog, FlowBox, Label, MenuButton,
+    Picture, StringList, gio, glib, glib::clone,
 };
 use tracing::{debug, error, warn};
 
@@ -745,4 +745,170 @@ fn workspacelistentry_icons_list_to_display_name(icon_name: &str) -> String {
         "workspacelistentryicon-weight-symbolic" => gettext("Weight"),
         _ => unimplemented!(),
     }
+}
+
+// Page Overview Dialog
+pub(crate) fn dialog_page_overview(appwindow: &RnAppWindow) {
+    use crate::StrokeContentPaintable;
+    use gtk4::prelude::*;
+    use rnote_compose::SplitOrder;
+    use rnote_engine::document::Layout;
+
+    let Some(canvas) = appwindow.active_tab_canvas() else {
+        return;
+    };
+
+    // Extract per-page content (cheap: only Arc clones of strokes)
+    let (pages_content, n_pages, format_width, format_height) = {
+        let engine = canvas.engine_ref();
+        let layout = engine.document.config.layout;
+        if !matches!(layout, Layout::FixedSize | Layout::ContinuousVertical) {
+            return;
+        }
+        let content = engine.extract_pages_content(SplitOrder::default());
+        let n = content.len();
+        let fw = engine.document.config.format.width();
+        let fh = engine.document.config.format.height();
+        (content, n, fw, fh)
+    };
+
+    if n_pages == 0 {
+        return;
+    }
+
+    // ── Dialog shell ──────────────────────────────────────────────────────
+    let dialog = adw::Dialog::builder()
+        .title(gettextrs::gettext("Page Overview"))
+        .content_width(700)
+        .content_height(520)
+        .build();
+
+    let toolbar_view = adw::ToolbarView::new();
+    let header = adw::HeaderBar::new();
+    toolbar_view.add_top_bar(&header);
+
+    // ── Scrollable FlowBox ────────────────────────────────────────────────
+    let scroller = gtk4::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk4::PolicyType::Never)
+        .vscrollbar_policy(gtk4::PolicyType::Automatic)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+
+    let flowbox = FlowBox::builder()
+        .homogeneous(true)
+        .row_spacing(12)
+        .column_spacing(12)
+        .margin_top(16)
+        .margin_bottom(16)
+        .margin_start(16)
+        .margin_end(16)
+        .max_children_per_line(6)
+        .min_children_per_line(2)
+        .selection_mode(gtk4::SelectionMode::None)
+        .valign(gtk4::Align::Start)
+        .build();
+
+    scroller.set_child(Some(&flowbox));
+    toolbar_view.set_content(Some(&scroller));
+    dialog.set_child(Some(&toolbar_view));
+
+    // Thumbnail width — keep aspect ratio
+    const THUMB_W: f64 = 140.0;
+    let thumb_h = if format_width > 0.0 {
+        (THUMB_W * format_height / format_width).round()
+    } else {
+        THUMB_W * 1.414 // A4 fallback
+    };
+
+    // ── Populate grid ─────────────────────────────────────────────────────
+    for (i, page_content) in pages_content.into_iter().enumerate() {
+        let page_number = i + 1;
+
+        // Each cell: thumbnail + label below
+        let cell = gtk4::Box::builder()
+            .orientation(gtk4::Orientation::Vertical)
+            .spacing(4)
+            .build();
+
+        // Paintable thumbnail
+        let paintable = StrokeContentPaintable::default();
+        paintable.set_draw_background(true);
+        paintable.set_draw_pattern(true);
+        paintable.set_property("paint-max-width", THUMB_W);
+        paintable.set_property("paint-max-height", thumb_h);
+        paintable.set_stroke_content(page_content);
+
+        let picture = Picture::builder()
+            .paintable(&paintable)
+            .width_request(THUMB_W as i32)
+            .height_request(thumb_h as i32)
+            .halign(gtk4::Align::Center)
+            .content_fit(gtk4::ContentFit::Fill)
+            .build();
+
+        // Rounded frame card look
+        let frame = gtk4::Frame::builder()
+            .halign(gtk4::Align::Center)
+            .build();
+        frame.set_child(Some(&picture));
+        frame.add_css_class("card");
+
+        let label = Label::builder()
+            .label(page_number.to_string())
+            .halign(gtk4::Align::Center)
+            .build();
+        label.add_css_class("caption");
+        label.add_css_class("dim-label");
+
+        cell.append(&frame);
+        cell.append(&label);
+
+        // Clicking jumps to that page
+        let btn = gtk4::Button::builder()
+            .child(&cell)
+            .has_frame(false)
+            .tooltip_text(format!("Go to page {page_number}"))
+            .build();
+        btn.add_css_class("flat");
+
+        btn.connect_clicked(glib::clone!(
+            #[weak]
+            appwindow,
+            #[weak]
+            dialog,
+            move |_| {
+                let Some(canvas) = appwindow.active_tab_canvas() else {
+                    return;
+                };
+                let (offset_x, offset_y) = {
+                    let engine = canvas.engine_ref();
+                    let zoom = engine.camera.zoom();
+                    let fh = engine.document.config.format.height();
+                    let fw = engine.document.config.format.width();
+                    let shadow = rnote_engine::Document::SHADOW_WIDTH;
+
+                    let y = (page_number.saturating_sub(1)) as f64 * fh * zoom
+                        - shadow * zoom;
+                    let parent_w =
+                        canvas.parent().map(|p| p.width() as f64).unwrap_or(0.0);
+                    let x = if fw * zoom <= parent_w {
+                        fw * 0.5 * zoom - parent_w * 0.5
+                    } else {
+                        -shadow * zoom
+                    };
+                    (x, y)
+                };
+                let widget_flags = canvas
+                    .engine_mut()
+                    .camera_set_offset_expand(na::vector![offset_x, offset_y]);
+                appwindow.handle_widget_flags(widget_flags, &canvas);
+                dialog.close();
+            }
+        ));
+
+        flowbox.append(&btn);
+    }
+
+    dialog.present(Some(appwindow));
 }
