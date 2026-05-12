@@ -941,6 +941,16 @@ impl RnAppWindow {
                         .set_visible_child_name("tools_page");
                 }
             }
+
+            // Page overview button: only relevant for paged layouts
+            let is_paged = matches!(
+                canvas.engine_ref().document.config.layout,
+                rnote_engine::document::Layout::FixedSize
+                    | rnote_engine::document::Layout::ContinuousVertical
+            );
+            self.main_header()
+                .page_overview_button()
+                .set_visible(is_paged);
         }
     }
 
