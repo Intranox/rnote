@@ -779,8 +779,8 @@ pub(crate) fn dialog_page_overview(appwindow: &RnAppWindow) {
     // ── Dialog shell ──────────────────────────────────────────────────────
     let dialog = adw::Dialog::builder()
         .title(gettextrs::gettext("Page Overview"))
-        .content_width(700)
-        .content_height(520)
+        .content_width(900)
+        .content_height(680)
         .build();
 
     let toolbar_view = adw::ToolbarView::new();
@@ -797,13 +797,13 @@ pub(crate) fn dialog_page_overview(appwindow: &RnAppWindow) {
 
     let flowbox = FlowBox::builder()
         .homogeneous(true)
-        .row_spacing(12)
-        .column_spacing(12)
-        .margin_top(16)
-        .margin_bottom(16)
-        .margin_start(16)
-        .margin_end(16)
-        .max_children_per_line(6)
+        .row_spacing(16)
+        .column_spacing(16)
+        .margin_top(20)
+        .margin_bottom(20)
+        .margin_start(20)
+        .margin_end(20)
+        .max_children_per_line(4)
         .min_children_per_line(2)
         .selection_mode(gtk4::SelectionMode::None)
         .valign(gtk4::Align::Start)
@@ -814,7 +814,7 @@ pub(crate) fn dialog_page_overview(appwindow: &RnAppWindow) {
     dialog.set_child(Some(&toolbar_view));
 
     // Thumbnail width — keep aspect ratio
-    const THUMB_W: f64 = 140.0;
+    const THUMB_W: f64 = 200.0;
     let thumb_h = if format_width > 0.0 {
         (THUMB_W * format_height / format_width).round()
     } else {
